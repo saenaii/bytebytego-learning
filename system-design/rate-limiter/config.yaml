@@ -1,0 +1,23 @@
+# Rate Limiter Configuration
+# Select one of: "token_bucket", "leaking_bucket", "bbr"
+limiter_type: "token_bucket"
+
+# Server settings
+server:
+  port: 8080
+
+# Token Bucket settings (used when limiter_type = "token_bucket")
+token_bucket:
+  capacity: 10          # Maximum number of tokens in the bucket
+  refill_rate: 1        # Number of tokens added per refill_interval
+  refill_interval: 1s   # Time between refills (e.g., 100ms, 1s, 1m)
+
+# Leaking Bucket settings (used when limiter_type = "leaking_bucket")
+leaking_bucket:
+  queue_size: 10        # Maximum number of requests in the queue
+  leak_rate: 1          # Number of requests processed per second
+
+# BBR settings (used when limiter_type = "bbr")
+bbr:
+  gain: 2.0             # Multiplicative gain factor (> 1.0)
+  window_size: 10       # Number of samples in the sliding window
