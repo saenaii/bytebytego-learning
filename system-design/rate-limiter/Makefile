@@ -1,4 +1,4 @@
-.PHONY: build test test-e2e coverage run docker-build docker-run clean
+.PHONY: build test test-e2e coverage run report docker-build docker-run clean
 
 build:
 	go build -o bin/server ./cmd/server
@@ -12,6 +12,9 @@ test-e2e:
 coverage:
 	go test ./... -coverprofile=coverage.out && go tool cover -html=coverage.out -o coverage.html
 
+report:
+	go run ./cmd/report/
+
 run:
 	go run ./cmd/server/ -config=config.yaml
 
@@ -22,4 +25,4 @@ docker-run:
 	docker run -p 8080:8080 -v $(PWD)/config.yaml:/app/config.yaml rate-limiter:latest
 
 clean:
-	rm -rf bin/ coverage.out coverage.html
+	rm -rf bin/ coverage.out coverage.html REPORT.md
