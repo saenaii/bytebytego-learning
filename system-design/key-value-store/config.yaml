@@ -1,0 +1,8 @@
+proxy:
+  addr: ":8080"
+  replication_factor: 2
+
+node:
+  addr: ":8081"
+  id: "node-1"
+  proxy_url: "http://proxy:8080"
