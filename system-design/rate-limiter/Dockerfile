@@ -1,6 +1,6 @@
 # Multi-stage build for rate-limiter service
 # Stage 1: Build the Go binary
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 RUN apk add --no-cache git ca-certificates
 
