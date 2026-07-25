@@ -80,7 +80,7 @@ func LoadConfig(path string) (*Config, error) {
 	}
 
 	// Parse YAML into a raw map first to detect partial configs
-	var raw map[string]interface{}
+	var raw map[string]any
 	if err := yaml.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("error parsing config file: %w", err)
 	}

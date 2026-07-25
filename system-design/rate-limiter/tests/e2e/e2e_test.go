@@ -104,7 +104,7 @@ func runBBRE2ETests(t *testing.T, baseURL string) {
 		if err != nil {
 			t.Fatalf("Request %d failed: %v", i, err)
 		}
-		var result map[string]interface{}
+		var result map[string]any
 		json.NewDecoder(httpResp.Body).Decode(&result)
 		httpResp.Body.Close()
 
@@ -485,7 +485,7 @@ func runE2ETests(t *testing.T, baseURL string, capacity int) {
 		if err != nil {
 			t.Fatalf("Request %d failed: %v", i, err)
 		}
-		var result map[string]interface{}
+		var result map[string]any
 		json.NewDecoder(httpResp.Body).Decode(&result)
 		httpResp.Body.Close()
 
@@ -508,7 +508,7 @@ func runE2ETests(t *testing.T, baseURL string, capacity int) {
 	if err != nil {
 		t.Fatalf("Extra request failed: %v", err)
 	}
-	var result map[string]interface{}
+	var result map[string]any
 	json.NewDecoder(resp.Body).Decode(&result)
 	resp.Body.Close()
 

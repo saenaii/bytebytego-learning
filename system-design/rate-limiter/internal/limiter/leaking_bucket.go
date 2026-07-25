@@ -72,11 +72,11 @@ func (lb *LeakingBucket) Name() string {
 }
 
 // Stats returns current statistics about the rate limiter state.
-func (lb *LeakingBucket) Stats() map[string]interface{} {
+func (lb *LeakingBucket) Stats() map[string]any {
 	lb.mu.Lock()
 	defer lb.mu.Unlock()
 
-	return map[string]interface{}{
+	return map[string]any{
 		"limiter_type":  lb.Name(),
 		"queue_size":    lb.queueSize,
 		"queue_length":  len(lb.queue),

@@ -74,7 +74,7 @@ func (s *Server) handleAllow(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusTooManyRequests)
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"allowed":      allowed,
 		"limiter_type": s.limiter.Name(),
 	})

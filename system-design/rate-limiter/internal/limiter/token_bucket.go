@@ -66,11 +66,11 @@ func (tb *TokenBucket) Name() string {
 }
 
 // Stats returns current statistics about the rate limiter state.
-func (tb *TokenBucket) Stats() map[string]interface{} {
+func (tb *TokenBucket) Stats() map[string]any {
 	tb.mu.Lock()
 	defer tb.mu.Unlock()
 
-	return map[string]interface{}{
+	return map[string]any{
 		"limiter_type":    tb.Name(),
 		"tokens":          tb.tokens,
 		"capacity":        tb.capacity,

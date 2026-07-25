@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -11,14 +13,19 @@ import (
 	"github.com/bytebytego-learning/rate-limiter/internal/limiter"
 )
 
+type benchResult struct {
+	nsOp        int64
+	bytesPerOp  int64
+	allocsPerOp int64
+	memHeapMiB  float64 // heap memory after benchmark (MiB)
+}
+
 type limiterResult struct {
-	name              string
-	aboveThreshold    scenarioResult
-	burstVsSteady     burstSteadyResult
-	doubleTraffic     scenarioResult
-	benchNSOp         int64
-	benchBytesPerOp   int64
-	benchAllocsPerOp  int64
+	name            string
+	aboveThreshold  scenarioResult
+	burstVsSteady   burstSteadyResult
+	doubleTraffic   scenarioResult
+	bench           benchResult
 }
 
 type scenarioResult struct {
@@ -69,7 +76,7 @@ func runAllScenarios() []limiterResult {
 		r.aboveThreshold = runAboveThreshold(l.rl, capacity)
 		r.burstVsSteady = runBurstVsSteady(l.rl)
 		r.doubleTraffic = runDoubleTraffic(l.rl, capacity)
-		r.benchNSOp, r.benchBytesPerOp, r.benchAllocsPerOp = runBench(l.rl)
+		r.bench = runBench(l.rl)
 
 		results = append(results, r)
 	}
@@ -155,14 +162,37 @@ func runDoubleTraffic(rl limiter.RateLimiter, capacity int) scenarioResult {
 	return scenarioResult{total: total, allowed: allowed, rejected: total - allowed}
 }
 
-func runBench(rl limiter.RateLimiter) (nsOp, bytesOp, allocsOp int64) {
+func runBench(rl limiter.RateLimiter) benchResult {
 	n := 1_000_000
+
+	runtime.GC()
+	var m0, m1 runtime.MemStats
+	runtime.ReadMemStats(&m0)
 	start := time.Now()
+
 	for i := 0; i < n; i++ {
 		rl.Allow()
 	}
+
 	elapsed := time.Since(start)
-	return int64(elapsed) / int64(n), 0, 0
+	runtime.ReadMemStats(&m1)
+	totalAllocDelta := m1.TotalAlloc - m0.TotalAlloc
+	allocsDelta := m1.Mallocs - m0.Mallocs
+
+	nsOp := int64(elapsed) / int64(n)
+	bytesPerOp := int64(0)
+	allocsPerOp := int64(0)
+	if allocsDelta > 0 {
+		bytesPerOp = int64(totalAllocDelta) / int64(allocsDelta)
+		allocsPerOp = int64(allocsDelta) / int64(n)
+	}
+
+	return benchResult{
+		nsOp:        nsOp,
+		bytesPerOp:  bytesPerOp,
+		allocsPerOp: allocsPerOp,
+		memHeapMiB:  float64(m1.HeapInuse) / (1024 * 1024),
+	}
 }
 
 func buildReport(results []limiterResult) string {
@@ -173,9 +203,9 @@ func buildReport(results []limiterResult) string {
 
 	// — E2E comparison —
 	b.WriteString("## ✅ E2E Comparison Report\n\n")
-	b.WriteString("200 requests per limiter (capacity=10, refill=10/s).\n\n")
-	b.WriteString("| ⚙️ Limiter | 📊 Total | ✅ Allowed | ❌ Rejected |\n")
-	b.WriteString("|---|---|---|---|\n")
+	b.WriteString("200 requests per limiter (capacity=10, refill=10/s); 1M `Allow()` calls for benchmark.\n\n")
+	b.WriteString("| ⚙️ Limiter | 📏 Cap | ✅ Allowed | ❌ Rejected | ⏱️ ns/op | 🧠 Mem (MiB) |\n")
+	b.WriteString("|---|---|---|---|---|---|\n")
 	icons := map[string]string{"token_bucket": "🪣", "leaking_bucket": "💧", "bbr": "📈"}
 	for _, r := range results {
 		total := 200
@@ -187,21 +217,29 @@ func buildReport(results []limiterResult) string {
 			}
 		}
 		rejected := total - allowed
-		b.WriteString(fmt.Sprintf("| %s %s | %d | %d | %d |\n", icons[r.name], limiterDisplayName(r.name), total, allowed, rejected))
+		opsSec := formatOps(1_000_000_000 / r.bench.nsOp)
+		cap := strconv.Itoa(10)
+		if r.name == "bbr" {
+			cap = "N/A"
+		}
+		b.WriteString(fmt.Sprintf("| %s %s | %s | %d | %d | %s (%d ns) | %.1f MiB |\n",
+			icons[r.name], limiterDisplayName(r.name), cap, allowed, rejected, opsSec, r.bench.nsOp, r.bench.memHeapMiB))
 	}
 	b.WriteString("\n")
 
 	// — Attacker: Above Threshold —
 	b.WriteString("## 🔥 Attacker Mindset Analysis\n\n")
 	b.WriteString("### 🚨 Above Threshold (3× capacity at once)\n\n")
-	b.WriteString("| ⚙️ Limiter | ✅ Allowed | ❌ Rejected | 🛡️ Verdict |\n")
-	b.WriteString("|---|---|---|---|\n")
+	b.WriteString("| ⚙️ Limiter | 📏 Cap | ✅ Allowed | ❌ Rejected | 🛡️ Verdict |\n")
+	b.WriteString("|---|---|---|---|---|\n")
 	for _, r := range results {
 		verdict := "✅ Correctly capped"
+		cap := strconv.Itoa(10)
 		if r.name == "bbr" {
 			verdict = "⚠️ Probabilistic, not precise"
+			cap = "N/A"
 		}
-		b.WriteString(fmt.Sprintf("| %s %s | %d | %d | %s |\n", icons[r.name], limiterDisplayName(r.name), r.aboveThreshold.allowed, r.aboveThreshold.rejected, verdict))
+		b.WriteString(fmt.Sprintf("| %s %s | %s | %d | %d | %s |\n", icons[r.name], limiterDisplayName(r.name), cap, r.aboveThreshold.allowed, r.aboveThreshold.rejected, verdict))
 	}
 	b.WriteString("\n")
 
@@ -237,11 +275,12 @@ func buildReport(results []limiterResult) string {
 	// — Benchmark —
 	b.WriteString("## 📊 Benchmark (Apple M4)\n\n")
 	b.WriteString("1M `Allow()` calls per limiter.\n\n")
-	b.WriteString("| ⚙️ Limiter | 🚀 Ops/sec | ⏱️ ns/op | 💾 B/op | 📦 allocs/op |\n")
-	b.WriteString("|---|---|---|---|---|\n")
+	b.WriteString("| ⚙️ Limiter | 🚀 Ops/sec | ⏱️ ns/op | 💾 B/op | 📦 allocs/op | 🧠 Heap (MiB) |\n")
+	b.WriteString("|---|---|---|---|---|---|\n")
 	for _, r := range results {
-		opsSec := formatOps(1_000_000_000 / r.benchNSOp)
-		b.WriteString(fmt.Sprintf("| %s %s | %s | %d | %d | %d |\n", icons[r.name], limiterDisplayName(r.name), opsSec, r.benchNSOp, r.benchBytesPerOp, r.benchAllocsPerOp))
+		opsSec := formatOps(1_000_000_000 / r.bench.nsOp)
+		b.WriteString(fmt.Sprintf("| %s %s | %s | %d | %d | %d | %.1f |\n",
+			icons[r.name], limiterDisplayName(r.name), opsSec, r.bench.nsOp, r.bench.bytesPerOp, r.bench.allocsPerOp, r.bench.memHeapMiB))
 	}
 	b.WriteString("\n")
 

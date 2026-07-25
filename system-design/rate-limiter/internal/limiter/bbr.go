@@ -86,11 +86,11 @@ func (b *BBR) Name() string {
 }
 
 // Stats returns current statistics about the rate limiter state.
-func (b *BBR) Stats() map[string]interface{} {
+func (b *BBR) Stats() map[string]any {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	return map[string]interface{}{
+	return map[string]any{
 		"limiter_type":      b.Name(),
 		"max_bandwidth":     b.maxBandwidth,
 		"min_rtt":           b.minRTT.String(),

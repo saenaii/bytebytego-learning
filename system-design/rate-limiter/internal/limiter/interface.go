@@ -16,5 +16,5 @@ type RateLimiter interface {
 	Name() string
 
 	// Stats returns current statistics about the rate limiter state.
-	Stats() map[string]interface{}
+	Stats() map[string]any
 }

@@ -47,7 +47,7 @@ func TestAllowEndpoint(t *testing.T) {
 		t.Errorf("expected status 200, got %d", w.Code)
 	}
 
-	var resp map[string]interface{}
+	var resp map[string]any
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatalf("error decoding response: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestStatsEndpoint(t *testing.T) {
 		t.Errorf("expected status 200, got %d", w.Code)
 	}
 
-	var resp map[string]interface{}
+	var resp map[string]any
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatalf("error decoding response: %v", err)
 	}
