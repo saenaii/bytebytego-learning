@@ -2,11 +2,15 @@ package report
 
 import (
 	"fmt"
+	"math"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bytebytego-learning/rate-limiter/internal/config"
@@ -17,7 +21,15 @@ type benchResult struct {
 	nsOp        int64
 	bytesPerOp  int64
 	allocsPerOp int64
-	memHeapMiB  float64 // heap memory after benchmark (MiB)
+	memHeapMiB  float64
+}
+
+type userViewResult struct {
+	total      int
+	success    int
+	rejected   int
+	latencyP95 time.Duration
+	latencyP99 time.Duration
 }
 
 type limiterResult struct {
@@ -26,6 +38,7 @@ type limiterResult struct {
 	burstVsSteady   burstSteadyResult
 	doubleTraffic   scenarioResult
 	bench           benchResult
+	userView        userViewResult
 }
 
 type scenarioResult struct {
@@ -77,6 +90,7 @@ func runAllScenarios() []limiterResult {
 		r.burstVsSteady = runBurstVsSteady(l.rl)
 		r.doubleTraffic = runDoubleTraffic(l.rl, capacity)
 		r.bench = runBench(l.rl)
+		r.userView = runUserView(l.rl)
 
 		results = append(results, r)
 	}
@@ -195,17 +209,70 @@ func runBench(rl limiter.RateLimiter) benchResult {
 	}
 }
 
+func runUserView(rl limiter.RateLimiter) userViewResult {
+	n := 200
+	numG := 10
+	samplesPerG := n / numG
+
+	type request struct {
+		success  bool
+		latency  time.Duration
+	}
+	results := make([]request, 0, n)
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+
+	for g := 0; g < numG; g++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < samplesPerG; i++ {
+				t0 := time.Now()
+				d := -200 * math.Log(rand.Float64())
+				if d > 5000 {
+					d = 5000
+				}
+				time.Sleep(time.Duration(d) * time.Millisecond)
+				ok := rl.Allow()
+				elapsed := time.Since(t0)
+				mu.Lock()
+				results = append(results, request{success: ok, latency: elapsed})
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+
+	success := 0
+	latencies := make([]time.Duration, 0, n)
+	for _, r := range results {
+		if r.success {
+			success++
+		}
+		latencies = append(latencies, r.latency)
+	}
+	sort.Slice(latencies, func(i, j int) bool { return latencies[i] < latencies[j] })
+
+	return userViewResult{
+		total:      n,
+		success:    success,
+		rejected:   n - success,
+		latencyP95: latencies[int(float64(n)*0.95)],
+		latencyP99: latencies[int(float64(n)*0.99)],
+	}
+}
+
 func buildReport(results []limiterResult) string {
 	var b strings.Builder
 
 	b.WriteString("# Rate Limiter — Test Report\n\n")
 	b.WriteString(fmt.Sprintf("_Generated: %s_\n\n", time.Now().Format(time.RFC3339)))
 
-	// — E2E comparison —
-	b.WriteString("## ✅ E2E Comparison Report\n\n")
-	b.WriteString("200 requests per limiter (capacity=10, refill=10/s); 1M `Allow()` calls for benchmark.\n\n")
-	b.WriteString("| ⚙️ Limiter | 📏 Cap | ✅ Allowed | ❌ Rejected | ⏱️ ns/op | 🧠 Mem (MiB) |\n")
-	b.WriteString("|---|---|---|---|---|---|\n")
+	// — Rate Limiter View —
+	b.WriteString("## 🔧 Rate Limiter View\n\n")
+	b.WriteString("200 sequential requests per limiter (capacity=10, refill=10/s).\n\n")
+	b.WriteString("| ⚙️ Limiter | 📏 Cap | ✅ Allowed | ❌ Rejected |\n")
+	b.WriteString("|---|---|---|---|\n")
 	icons := map[string]string{"token_bucket": "🪣", "leaking_bucket": "💧", "bbr": "📈"}
 	for _, r := range results {
 		total := 200
@@ -217,13 +284,36 @@ func buildReport(results []limiterResult) string {
 			}
 		}
 		rejected := total - allowed
-		opsSec := formatOps(1_000_000_000 / r.bench.nsOp)
 		cap := strconv.Itoa(10)
 		if r.name == "bbr" {
 			cap = "N/A"
 		}
-		b.WriteString(fmt.Sprintf("| %s %s | %s | %d | %d | %s (%d ns) | %.1f MiB |\n",
-			icons[r.name], limiterDisplayName(r.name), cap, allowed, rejected, opsSec, r.bench.nsOp, r.bench.memHeapMiB))
+		b.WriteString(fmt.Sprintf("| %s %s | %s | %d | %d |\n",
+			icons[r.name], limiterDisplayName(r.name), cap, allowed, rejected))
+	}
+	b.WriteString("\n")
+
+	// — User View —
+	b.WriteString("## 👤 User View\n\n")
+	b.WriteString("200 concurrent requests with simulated processing delay (avg 200ms, max 5s, exponential).\n\n")
+	b.WriteString("| ⚙️ Limiter | 📊 Total | ✅ 200 | ❌ 429 | ✅ Success Rate | 🎯 p95 | 🎯 p99 |\n")
+	b.WriteString("|---|---|---|---|---|---|---|\n")
+	for _, r := range results {
+		rate := pct(r.userView.success, r.userView.total)
+		b.WriteString(fmt.Sprintf("| %s %s | %d | %d | %d | %.1f%% | %v | %v |\n",
+			icons[r.name], limiterDisplayName(r.name), r.userView.total, r.userView.success, r.userView.rejected, rate, r.userView.latencyP95, r.userView.latencyP99))
+	}
+	b.WriteString("\n")
+
+	// — Benchmark —
+	b.WriteString("## 📊 Benchmark (Apple M4)\n\n")
+	b.WriteString("1M `Allow()` calls per limiter.\n\n")
+	b.WriteString("| ⚙️ Limiter | 🚀 Ops/sec | ⏱️ ns/op | 💾 B/op | 📦 allocs/op | 🧠 Heap (MiB) |\n")
+	b.WriteString("|---|---|---|---|---|---|\n")
+	for _, r := range results {
+		opsSec := formatOps(1_000_000_000 / r.bench.nsOp)
+		b.WriteString(fmt.Sprintf("| %s %s | %s | %d | %d | %d | %.1f |\n",
+			icons[r.name], limiterDisplayName(r.name), opsSec, r.bench.nsOp, r.bench.bytesPerOp, r.bench.allocsPerOp, r.bench.memHeapMiB))
 	}
 	b.WriteString("\n")
 
@@ -269,18 +359,6 @@ func buildReport(results []limiterResult) string {
 			verdict = "⚠️ Permissive after idle"
 		}
 		b.WriteString(fmt.Sprintf("| %s %s | %d | %s |\n", icons[r.name], limiterDisplayName(r.name), r.doubleTraffic.allowed, verdict))
-	}
-	b.WriteString("\n")
-
-	// — Benchmark —
-	b.WriteString("## 📊 Benchmark (Apple M4)\n\n")
-	b.WriteString("1M `Allow()` calls per limiter.\n\n")
-	b.WriteString("| ⚙️ Limiter | 🚀 Ops/sec | ⏱️ ns/op | 💾 B/op | 📦 allocs/op | 🧠 Heap (MiB) |\n")
-	b.WriteString("|---|---|---|---|---|---|\n")
-	for _, r := range results {
-		opsSec := formatOps(1_000_000_000 / r.bench.nsOp)
-		b.WriteString(fmt.Sprintf("| %s %s | %s | %d | %d | %d | %.1f |\n",
-			icons[r.name], limiterDisplayName(r.name), opsSec, r.bench.nsOp, r.bench.bytesPerOp, r.bench.allocsPerOp, r.bench.memHeapMiB))
 	}
 	b.WriteString("\n")
 

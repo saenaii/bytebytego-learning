@@ -1,16 +1,36 @@
 # Rate Limiter — Test Report
 
-_Generated: 2026-07-25T10:45:59+08:00_
+_Generated: 2026-07-25T11:22:47+08:00_
 
-## ✅ E2E Comparison Report
+## 🔧 Rate Limiter View
 
-200 requests per limiter (capacity=10, refill=10/s); 1M `Allow()` calls for benchmark.
+200 sequential requests per limiter (capacity=10, refill=10/s).
 
-| ⚙️ Limiter | 📏 Cap | ✅ Allowed | ❌ Rejected | ⏱️ ns/op | 🧠 Mem (MiB) |
+| ⚙️ Limiter | 📏 Cap | ✅ Allowed | ❌ Rejected |
+|---|---|---|---|
+| 🪣 Token Bucket | 10 | 10 | 190 |
+| 💧 Leaking Bucket | 10 | 10 | 190 |
+| 📈 BBR | N/A | 97 | 103 |
+
+## 👤 User View
+
+200 concurrent requests with simulated processing delay (avg 200ms, max 5s, exponential).
+
+| ⚙️ Limiter | 📊 Total | ✅ 200 | ❌ 429 | ✅ Success Rate | 🎯 p95 | 🎯 p99 |
+|---|---|---|---|---|---|---|
+| 🪣 Token Bucket | 200 | 32 | 168 | 16.0% | 554.022583ms | 927.043667ms |
+| 💧 Leaking Bucket | 200 | 20 | 180 | 10.0% | 574.5235ms | 998.021417ms |
+| 📈 BBR | 200 | 111 | 89 | 55.5% | 538.409959ms | 803.055708ms |
+
+## 📊 Benchmark (Apple M4)
+
+1M `Allow()` calls per limiter.
+
+| ⚙️ Limiter | 🚀 Ops/sec | ⏱️ ns/op | 💾 B/op | 📦 allocs/op | 🧠 Heap (MiB) |
 |---|---|---|---|---|---|
-| 🪣 Token Bucket | 10 | 10 | 190 | 18.2M (55 ns) | 0.6 MiB |
-| 💧 Leaking Bucket | 10 | 10 | 190 | 18.5M (54 ns) | 0.6 MiB |
-| 📈 BBR | N/A | 106 | 94 | 13.5M (74 ns) | 0.6 MiB |
+| 🪣 Token Bucket | 18.2M | 55 | 0 | 0 | 0.6 |
+| 💧 Leaking Bucket | 20.0M | 50 | 0 | 0 | 0.7 |
+| 📈 BBR | 11.9M | 84 | 0 | 0 | 0.7 |
 
 ## 🔥 Attacker Mindset Analysis
 
@@ -20,7 +40,7 @@ _Generated: 2026-07-25T10:45:59+08:00_
 |---|---|---|---|---|
 | 🪣 Token Bucket | 10 | 10 | 20 | ✅ Correctly capped |
 | 💧 Leaking Bucket | 10 | 10 | 20 | ✅ Correctly capped |
-| 📈 BBR | N/A | 16 | 14 | ⚠️ Probabilistic, not precise |
+| 📈 BBR | N/A | 11 | 19 | ⚠️ Probabilistic, not precise |
 
 ### ⚡ Burst vs Steady (2s each)
 
@@ -28,7 +48,7 @@ _Generated: 2026-07-25T10:45:59+08:00_
 |---|---|---|---|
 | 🪣 Token Bucket | 19.8% | 2.0% | ✅ Steady gets more throughput |
 | 💧 Leaking Bucket | 19.8% | 1.9% | ✅ Steady gets more throughput |
-| 📈 BBR | 44.8% | 49.9% | ⚖️ Nearly equal (probabilistic) |
+| 📈 BBR | 46.9% | 49.2% | ⚖️ Nearly equal (probabilistic) |
 
 ### 🔄 Double Traffic / Reset Attack
 
@@ -38,17 +58,7 @@ Drain → idle 2s → burst 3× capacity.
 |---|---|---|
 | 🪣 Token Bucket | 10 | ✅ No (capped at capacity) |
 | 💧 Leaking Bucket | 10 | ✅ No (capped at capacity) |
-| 📈 BBR | 19 | ⚠️ Permissive after idle |
-
-## 📊 Benchmark (Apple M4)
-
-1M `Allow()` calls per limiter.
-
-| ⚙️ Limiter | 🚀 Ops/sec | ⏱️ ns/op | 💾 B/op | 📦 allocs/op | 🧠 Heap (MiB) |
-|---|---|---|---|---|---|
-| 🪣 Token Bucket | 18.2M | 55 | 0 | 0 | 0.6 |
-| 💧 Leaking Bucket | 18.5M | 54 | 0 | 0 | 0.6 |
-| 📈 BBR | 13.5M | 74 | 16 | 0 | 0.6 |
+| 📈 BBR | 12 | ⚠️ Permissive after idle |
 
 ## 📝 Tradeoff Summary
 
