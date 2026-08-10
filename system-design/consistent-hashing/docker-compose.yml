@@ -1,0 +1,106 @@
+services:
+  proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ch-proxy
+    command: ["./proxy", "-addr=:8080", "-vnodes=50"]
+    ports:
+      - "8080:8080"
+    networks:
+      - ch-network
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  node-1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ch-node-1
+    command: ["./node", "-addr=:8081", "-id=node-1", "-proxy=http://proxy:8080", "-public-addr=http://node-1:8081", "-register=true"]
+    ports:
+      - "8081:8081"
+    networks:
+      - ch-network
+    depends_on:
+      proxy:
+        condition: service_healthy
+
+  node-2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ch-node-2
+    command: ["./node", "-addr=:8082", "-id=node-2", "-proxy=http://proxy:8080", "-public-addr=http://node-2:8082", "-register=true"]
+    ports:
+      - "8082:8082"
+    networks:
+      - ch-network
+    depends_on:
+      proxy:
+        condition: service_healthy
+
+  node-3:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ch-node-3
+    command: ["./node", "-addr=:8083", "-id=node-3", "-proxy=http://proxy:8080", "-public-addr=http://node-3:8083", "-register=true"]
+    ports:
+      - "8083:8083"
+    networks:
+      - ch-network
+    depends_on:
+      proxy:
+        condition: service_healthy
+
+  traffic:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ch-traffic
+    command: ["./traffic", "-proxy=http://proxy:8080", "-rate=100", "-keyspace=10000", "-duration=0"]
+    networks:
+      - ch-network
+    depends_on:
+      proxy:
+        condition: service_healthy
+
+  # Standby model: node-4/5 boot healthy but stay OFF the ring (-register=false).
+  # The dashboard's Add Node buttons POST /admin/nodes/node-4 (or node-5) to
+  # enable them live, with zero terminal commands.
+  node-4:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ch-node-4
+    command: ["./node", "-addr=:8084", "-id=node-4", "-proxy=http://proxy:8080", "-public-addr=http://node-4:8084", "-register=false"]
+    ports:
+      - "8084:8084"
+    networks:
+      - ch-network
+    depends_on:
+      proxy:
+        condition: service_healthy
+
+  node-5:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ch-node-5
+    command: ["./node", "-addr=:8085", "-id=node-5", "-proxy=http://proxy:8080", "-public-addr=http://node-5:8085", "-register=false"]
+    ports:
+      - "8085:8085"
+    networks:
+      - ch-network
+    depends_on:
+      proxy:
+        condition: service_healthy
+
+networks:
+  ch-network:
+    driver: bridge

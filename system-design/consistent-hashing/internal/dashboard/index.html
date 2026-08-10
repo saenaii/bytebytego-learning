@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Consistent Hashing — Live Demo</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root { --bg:#0f172a; --panel:#1e293b; --border:#334155; --text:#e2e8f0; --muted:#94a3b8; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:ui-sans-serif,system-ui,sans-serif; background:var(--bg); color:var(--text); }
+  header { padding:16px 24px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+  header h1 { font-size:18px; margin:0; }
+  header .chip { background:var(--panel); border:1px solid var(--border); border-radius:999px; padding:4px 12px; font-size:12px; color:var(--muted); }
+  header .chip b { color:var(--text); }
+  main { padding:16px 24px; display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .card { background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:16px; }
+  .card h2 { font-size:14px; margin:0 0 12px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; }
+  .full { grid-column:1 / -1; }
+  .flex { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  button { background:#3b82f6; color:#fff; border:0; border-radius:8px; padding:8px 14px; font-size:13px; cursor:pointer; }
+  button.add { background:#16a34a; }
+  button.remove { background:#dc2626; }
+  button:disabled { background:#475569; cursor:not-allowed; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--border); }
+  th { color:var(--muted); font-weight:500; }
+  .dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; }
+  #ringCanvas { display:block; margin:0 auto; }
+  .meter-wrap { position:relative; height:22px; background:#1a2332; border-radius:999px; overflow:hidden; margin-top:8px; }
+  .meter { position:absolute; inset:0; }
+  #meterMarker { position:absolute; top:0; bottom:0; width:4px; background:#fff; border-radius:2px; transition:left .6s ease; }
+  #meterLabel { font-size:18px; font-weight:700; margin-top:8px; text-align:center; }
+  .green { color:#22c55e; } .yellow { color:#eab308; } .red { color:#ef4444; }
+  .big { font-size:24px; font-weight:700; }
+  .muted { color:var(--muted); font-size:12px; }
+  .stats-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:12px; }
+  .stat-box { background:#16233a; border:1px solid var(--border); border-radius:10px; padding:10px 12px; }
+  .stat-box .label { color:var(--muted); font-size:11px; text-transform:uppercase; }
+  .stat-box .value { font-size:18px; font-weight:700; margin-top:4px; }
+  @media (max-width: 900px) { main { grid-template-columns:1fr; } .stats-grid { grid-template-columns:repeat(2,1fr); } }
+</style>
+</head>
+<body>
+<header>
+  <h1>🧭 Consistent Hashing — Live Demo</h1>
+  <span class="chip">Active nodes <b id="activeCount">0</b></span>
+  <span class="chip">Topology changes <b id="topoChanges">0</b></span>
+  <span class="chip">VNodes / node <b id="vnodesChip">50</b></span>
+</header>
+<main>
+  <div class="card full">
+    <h2>Scale operations</h2>
+    <div class="flex">
+      <span>Add standby node:</span>
+      <span id="addButtons"></span>
+      <span style="margin-left:16px">Remove active node:</span>
+      <span id="removeButtons"></span>
+    </div>
+    <div class="muted" style="margin-top:8px">
+      Adding a node rebalances the ring immediately: only the keys in the new node's arcs migrate (~25% on a 3→4 scale-out, vs ~75% for naive <code>key % N</code>).
+    </div>
+  </div>
+
+  <div class="card full">
+    <h2>Live migration counter <span class="muted">(keys moved since last topology change)</span></h2>
+    <div class="stats-grid">
+      <div class="stat-box"><div class="label">Keys tracked</div><div class="value" id="trackedKeys">0</div></div>
+      <div class="stat-box"><div class="label">Keys moved</div><div class="value" id="movedKeys">0</div></div>
+      <div class="stat-box"><div class="label">Migration %</div><div class="value" id="migrationPct">0%</div></div>
+      <div class="stat-box"><div class="label">Total keys in cluster</div><div class="value" id="totalKeys">0</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>QPS per node</h2>
+    <canvas id="qpsChart" height="220"></canvas>
+  </div>
+  <div class="card">
+    <h2>Key distribution per node <span class="muted">(ring ownership)</span></h2>
+    <canvas id="keysChart" height="220"></canvas>
+  </div>
+
+  <div class="card">
+    <h2>Hash ring <span class="muted">(vnode arcs per node)</span></h2>
+    <canvas id="ringCanvas" width="300" height="300"></canvas>
+  </div>
+  <div class="card">
+    <h2>Load balance quality</h2>
+    <div id="meterLabel" class="yellow">waiting for data…</div>
+    <div class="meter-wrap">
+      <div class="meter" id="meterGradient"></div>
+      <div id="meterMarker"></div>
+    </div>
+    <div class="muted" style="margin-top:8px">
+      <span class="green">● ≤10%</span> well balanced · <span class="yellow">● ≤15%</span> acceptable · <span class="red">● &gt;15%</span> skewed
+      (std-dev / mean of per-node key counts)
+    </div>
+  </div>
+
+  <div class="card full">
+    <h2>Node table</h2>
+    <table>
+      <thead><tr><th>Node</th><th>Status</th><th>Requests</th><th>PUT</th><th>GET</th><th>QPS</th><th>Stored keys</th><th>Owned keys</th><th>Load %</th></tr></thead>
+      <tbody id="nodeTable"></tbody>
+    </table>
+  </div>
+</main>
+
+<script>
+const PALETTE = ["#4e79a7","#f28e2b","#e15759","#76b7b2","#59a14f","#b07aa1"];
+const colorFor = (i) => PALETTE[i % PALETTE.length];
+
+const qpsChart = new Chart(document.getElementById("qpsChart"), {
+  type: "bar",
+  options: { responsive: true, plugins: { legend: { display: false } },
+    scales: { y: { beginAtZero: true, grid: { color: "#334155" } }, x: { grid: { display: false } } } },
+  data: { labels: [], datasets: [{ label: "QPS", data: [], backgroundColor: [] }] }
+});
+const keysChart = new Chart(document.getElementById("keysChart"), {
+  type: "bar",
+  options: { responsive: true, plugins: { legend: { display: false } },
+    scales: { y: { beginAtZero: true, grid: { color: "#334155" } }, x: { grid: { display: false } } } },
+  data: { labels: [], datasets: [{ label: "Keys", data: [], backgroundColor: [] }] }
+});
+
+function drawRing(arcs, nodeColor) {
+  const canvas = document.getElementById("ringCanvas");
+  const ctx = canvas.getContext("2d");
+  const cx = 150, cy = 150, r = 128;
+  ctx.clearRect(0, 0, 300, 300);
+  ctx.strokeStyle = "#334155";
+  ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, 2 * Math.PI); ctx.stroke();
+  if (!arcs || arcs.length === 0) return;
+  const angle = (h) => (h / 18446744073709551615) * 2 * Math.PI - Math.PI / 2;
+  const sorted = [...arcs].sort((a, b) => a.hash - b.hash);
+  ctx.lineWidth = 14;
+  for (let i = 0; i < sorted.length; i++) {
+    const a = angle(sorted[i].hash);
+    const b = i + 1 < sorted.length ? angle(sorted[i + 1].hash) : angle(sorted[0].hash) + 2 * Math.PI;
+    const mid = (a + b) / 2;
+    ctx.strokeStyle = nodeColor(sorted[i].node);
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, a, b, false);
+    ctx.stroke();
+    const px = cx + r * Math.cos(mid), py = cy + r * Math.sin(mid);
+    ctx.fillStyle = nodeColor(sorted[i].node);
+    ctx.beginPath(); ctx.arc(px, py, 4, 0, 2 * Math.PI); ctx.fill();
+  }
+}
+
+function updateMeter(stddevPct) {
+  const marker = document.getElementById("meterMarker");
+  const label = document.getElementById("meterLabel");
+  const grad = document.getElementById("meterGradient");
+  grad.style.background = "linear-gradient(90deg,#22c55e 0%,#22c55e 33%,#eab308 33%,#eab308 50%,#ef4444 50%,#ef4444 100%)";
+  if (stddevPct <= 10) { label.className = "green"; label.textContent = "WELL BALANCED"; }
+  else if (stddevPct <= 15) { label.className = "yellow"; label.textContent = "ACCEPTABLE"; }
+  else { label.className = "red"; label.textContent = "SKEWED"; }
+  marker.style.left = Math.min(100, stddevPct / 15 * 100) + "%";
+  label.textContent += " · std-dev " + stddevPct.toFixed(2) + "%";
+}
+
+function renderButtons(stats) {
+  const add = document.getElementById("addButtons");
+  const remove = document.getElementById("removeButtons");
+  add.innerHTML = "";
+  remove.innerHTML = "";
+  if (stats.standby && stats.standby.length === 0) add.textContent = "(none)";
+  stats.standby.forEach((id) => {
+    const b = document.createElement("button");
+    b.className = "add";
+    b.textContent = "+ " + id;
+    b.onclick = async () => { b.disabled = true; await fetch("/admin/nodes/" + id, { method: "POST" }); };
+    add.appendChild(b);
+  });
+  (stats.nodes || []).filter((n) => n.active).forEach((n) => {
+    const b = document.createElement("button");
+    b.className = "remove";
+    b.textContent = "− " + n.id;
+    b.onclick = async () => { b.disabled = true; await fetch("/admin/nodes/" + n.id, { method: "DELETE" }); };
+    remove.appendChild(b);
+  });
+}
+
+function renderTable(stats) {
+  const tbody = document.getElementById("nodeTable");
+  tbody.innerHTML = "";
+  const nodes = stats.nodes || [];
+  nodes.forEach((n, i) => {
+    const tr = document.createElement("tr");
+    const status = n.active ? '<span class="green">●</span> active' : '<span class="muted">●</span> standby';
+    tr.innerHTML = "<td><span class=\"dot\" style=\"background:" + colorFor(i) + "\"></span><b>" + n.id + "</b></td>" +
+      "<td>" + status + "</td><td>" + n.requests + "</td><td>" + n.puts + "</td><td>" + n.gets + "</td>" +
+      "<td>" + n.qps.toFixed(1) + "</td><td>" + n.keys + "</td><td>" + n.owned + "</td><td>" + n.load_pct.toFixed(1) + "%</td>";
+    tbody.appendChild(tr);
+  });
+}
+
+function nodeIndex(id) {
+  return (window._nodeOrder || []).indexOf(id);
+}
+
+async function refresh() {
+  let stats;
+  try { stats = await (await fetch("/stats")).json(); } catch (e) { return; }
+  const active = (stats.nodes || []).filter((n) => n.active);
+  const order = active.map((n) => n.id);
+  if (!window._nodeOrder || order.join() !== window._nodeOrder.join()) {
+    window._nodeOrder = order;
+    const colors = active.map((n, i) => colorFor(i));
+    qpsChart.data.labels = order; qpsChart.data.datasets[0].data = active.map((n) => n.qps); qpsChart.data.datasets[0].backgroundColor = colors;
+    keysChart.data.labels = order; keysChart.data.datasets[0].data = active.map((n) => n.owned); keysChart.data.datasets[0].backgroundColor = colors;
+    qpsChart.update(); keysChart.update();
+  } else {
+    qpsChart.data.datasets[0].data = active.map((n) => n.qps); qpsChart.update();
+    keysChart.data.datasets[0].data = active.map((n) => n.owned); keysChart.update();
+  }
+  const nodeColor = (id) => { const i = window._nodeOrder.indexOf(id); return colorFor(i < 0 ? 0 : i); };
+  drawRing(stats.ring_arcs || [], nodeColor);
+  updateMeter(stats.load_stddev_pct);
+  document.getElementById("activeCount").textContent = stats.active_count;
+  document.getElementById("topoChanges").textContent = stats.topology_changes;
+  document.getElementById("vnodesChip").textContent = stats.vnodes;
+  document.getElementById("trackedKeys").textContent = stats.migration.tracked_keys;
+  document.getElementById("movedKeys").textContent = stats.migration.moved;
+  document.getElementById("migrationPct").textContent = stats.migration.migration_pct.toFixed(1) + "%";
+  document.getElementById("totalKeys").textContent = stats.total_keys;
+  renderButtons(stats);
+  renderTable(stats);
+}
+refresh();
+setInterval(refresh, 1000);
+</script>
+</body>
+</html>
