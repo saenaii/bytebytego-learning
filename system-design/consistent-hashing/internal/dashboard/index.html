@@ -167,8 +167,9 @@ function renderButtons(stats) {
   const remove = document.getElementById("removeButtons");
   add.innerHTML = "";
   remove.innerHTML = "";
-  if (stats.standby && stats.standby.length === 0) add.textContent = "(none)";
-  stats.standby.forEach((id) => {
+  const standby = stats.standby || [];
+  if (standby.length === 0) add.textContent = "(none)";
+  standby.forEach((id) => {
     const b = document.createElement("button");
     b.className = "add";
     b.textContent = "+ " + id;

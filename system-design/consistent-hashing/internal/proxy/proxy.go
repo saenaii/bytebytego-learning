@@ -416,6 +416,8 @@ func (p *Proxy) handleStats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	st := Stats{
+		Nodes:           []NodeInfo{},
+		Standby:         []string{},
 		VNodes:          p.vnodes,
 		TopologyChanges: p.topoChanges.Load(),
 		Migration:       p.computeMigration(),

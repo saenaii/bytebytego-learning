@@ -16,3 +16,7 @@
 ## Conversation Summaries
 
 - 2026-08-10 (session 1): Implemented the full consistent-hashing demo per design.md — proxy with ring ownership-based /stats and live migration counter, embedded Chart.js dashboard with ring visualization, traffic generator package, standby-model docker-compose, and E2E test that verifies 18–32% migration on 3→4 scale-out, exact-key scale-in, zero traffic to disabled nodes, and writes REPORT.md.
+
+## 2026-08-11
+
+- 2026-08-11 (session 2): Fixed dashboard crash on missing `standby` field by defaulting it to `[]` in /stats and guarding the renderButtons loop; verified the demo stack boots via docker-compose (proxy + 3 active nodes + 2 standby) and shut it down after testing.
