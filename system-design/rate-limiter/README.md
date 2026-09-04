@@ -2,6 +2,19 @@
 
 A lightweight, in-process rate limiter service written in Go. It exposes an HTTP API that clients call to check whether a request should be allowed or rejected based on the configured rate-limiting algorithm.
 
+## Key Takeaways (from ByteByteGo)
+
+| Concept | What We Learned |
+|---------|----------------|
+| **Why rate limiting?** | Protect backend services from traffic spikes, prevent abuse, and ensure fair resource sharing across clients. Without it, a single noisy neighbor can bring down the entire system. |
+| **Token Bucket** | Best when bursts are acceptable. A bucket holds up to `capacity` tokens that refill at a steady rate. Simple, memory-efficient, and the most widely used algorithm (e.g., AWS API Gateway). |
+| **Leaking Bucket** | Best when output rate must be perfectly smooth. Requests queue into a FIFO; a background goroutine drains at a constant rate. Trade-off: added latency under burst. |
+| **BBR (Adaptive)** | Best when traffic patterns are unpredictable. Estimates bandwidth and RTT from a sliding window, self-tunes the allow-rate. No manual capacity tuning required — the system adapts to its own throughput. |
+| **Interface-driven design** | All three algorithms satisfy the same `RateLimiter` interface (`Allow() bool`, `Stats()`). Swapping algorithms is a one-line config change — callers never change. |
+| **Thread-safety is non-negotiable** | Any in-process limiter must handle concurrent `Allow()` calls safely (`sync.Mutex`). A race condition in the limiter silently under- or over-counts, defeating its purpose. |
+
+> **Bottom line:** There is no single "best" rate limiter. Token Bucket handles bursts, Leaking Bucket smooths them, and BBR adapts to unknown conditions. The right choice depends on whether your priority is burst tolerance, output smoothness, or self-tuning under changing load.
+
 ## Features
 
 - **Three configurable rate-limiting algorithms:**

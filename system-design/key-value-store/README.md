@@ -2,6 +2,19 @@
 
 A distributed key-value store simulated via Docker containers. Implements consistent hashing (50 virtual nodes), vector clocks, and Merkle trees for conflict resolution with quorum-based reads/writes (N=3, W=2, R=2).
 
+## Key Takeaways (from ByteByteGo)
+
+| Concept | What We Learned |
+|---------|----------------|
+| **Consistent hashing for data placement** | Keys are mapped onto a hash ring; each key lives on the next N physical nodes clockwise. On node add/remove, only the affected arcs move — the rest of the cluster is untouched. Virtual nodes (50 per physical) keep distribution within ±15% stddev. |
+| **Quorum (N=3, W=2, R=2)** | With replication factor 3, writing to 2 and reading from 2 guarantees reading the latest write. W+R > N ensures overlap. Tuning W and R lets you trade consistency for latency: W=1 is fast but stale reads are possible. |
+| **Vector clocks detect concurrency** | Each write increments the vector clock. On conflict (two concurrent writes with no causal dominance), the store returns **siblings** instead of silently overwriting. The client (or application) resolves the conflict — the database stays honest. |
+| **Merkle trees for anti-entropy** | Each node maintains a Merkle tree of its keys. Background repair compares trees between replicas; only differing subtrees are transferred. This makes sync O(log N) in data size, not O(N). |
+| **Eventual consistency is a design choice** | When the network heals, anti-entropy merges all replicas. The system is temporarily inconsistent during partitions, but converges to a single value. This is the CAP theorem in action: choose AP (availability + partition tolerance) and accept eventual consistency. |
+| **Proxy as coordinator** | The proxy owns the ring, enforces quorum, and returns siblings on conflict. Separating routing from storage keeps nodes stateless and simple — each node only needs a local KV store and a Merkle tree. |
+
+> **Bottom line:** A distributed KV store is a composition of well-known building blocks: consistent hashing for placement, quorum for consistency tuning, vector clocks for conflict detection, and Merkle trees for background repair. No single component is complex — the challenge is making them work together correctly under failure.
+
 ## Architecture
 
 ```
