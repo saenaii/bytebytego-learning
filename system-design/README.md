@@ -6,6 +6,7 @@ Runnable system-design examples and study notes inspired by [ByteByteGo](https:/
 
 | Topic | What it covers |
 | --- | --- |
+| [Back-of-the-Envelope Estimation](./back-of-the-envelope-estimation/) | Estimating QPS, storage, latency, availability, and capacity from explicit assumptions. |
 | [Scale From Zero to Millions of Users](./scale-from-zero-to-millions-of-users/) | The incremental path from a single server to a globally distributed, observable, sharded system. |
 | [Rate Limiter](./rate-limiter/) | Token bucket, leaking bucket, and adaptive BBR rate-limiting algorithms in Go. |
 | [Consistent Hashing](./consistent-hashing/) | Hash rings, virtual nodes, traffic distribution, and low-migration scale-out/scale-in. |
@@ -39,6 +40,7 @@ Some topics also provide Docker-based workflows and end-to-end tests. Check the 
 The topics can be approached in this order:
 
 1. Start with [Scale From Zero to Millions of Users](./scale-from-zero-to-millions-of-users/) for the overall architecture progression.
-2. Study [Rate Limiter](./rate-limiter/) for protecting services under load.
-3. Explore [Consistent Hashing](./consistent-hashing/) for scalable data and traffic placement.
-4. Finish with the [Distributed Key-Value Store](./key-value-store/) to see these ideas composed into a distributed system.
+2. Learn [Back-of-the-Envelope Estimation](./back-of-the-envelope-estimation/) to quantify scale and capacity before selecting components.
+3. Study [Rate Limiter](./rate-limiter/) for protecting services under load.
+4. Explore [Consistent Hashing](./consistent-hashing/) for scalable data and traffic placement.
+5. Finish with the [Distributed Key-Value Store](./key-value-store/) to see these ideas composed into a distributed system.
