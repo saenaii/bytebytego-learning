@@ -15,6 +15,10 @@ The main learning project in this repository. It currently includes:
 
 Each topic is self-contained and may include design notes, Go implementation code, Docker workflows, tests, and task tracking. See the [system-design README](./system-design/README.md) for the topic index and learning path.
 
+### [Coding Interview](./coding-interview/)
+
+Algorithm-pattern study notes for coding interviews. Each pattern has a topic README explaining the core idea, recognition signals, solving process, and interview reasoning; individual problems can be added as separate Markdown files under the topic.
+
 ## Getting started
 
 Clone the repository and enter the project you want to explore:
