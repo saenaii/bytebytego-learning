@@ -145,7 +145,9 @@ The analogy is limited: production garbage collectors have additional concerns s
 
 ## Related problems
 
-Concrete problem walkthroughs will be added as separate Markdown files in this folder. Each problem should explain the recognition signal, invariant, pointer movement, proof of correctness, complexity, edge cases, and implementation approach.
+- [125. Valid Palindrome](./125-Valid-Palindrome.md) — skip non-alphanumeric characters while comparing matching positions from both ends.
+
+Future problem walkthroughs should explain the recognition signal, invariant, pointer movement, proof of correctness, complexity, edge cases, and implementation approach.
 
 ## Source and further reading
 
