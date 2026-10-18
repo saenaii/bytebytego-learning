@@ -19,7 +19,7 @@ The topic README comes first. Problem notes can then apply the pattern to a conc
 
 | Topic | What it covers |
 | --- | --- |
-| [Two Pointers](./two-pointer/) | Using two positions in a linear data structure to compare, scan, or transform values while exploiting predictable movement. |
+| [Two Pointers](./two-pointers/) | Using two positions in a linear data structure to compare, scan, or transform values while exploiting predictable movement. |
 
 ## Recommended study loop
 
