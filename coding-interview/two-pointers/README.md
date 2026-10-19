@@ -146,6 +146,7 @@ The analogy is limited: production garbage collectors have additional concerns s
 ## Related problems
 
 - [125. Valid Palindrome](./125-Valid-Palindrome.md) — skip non-alphanumeric characters while comparing matching positions from both ends.
+- [167. Two Sum II — Input Array Is Sorted](./167-two-sum2-input-array-is-sorted.md) — use sorted order to move two pointers toward a target pair.
 
 Future problem walkthroughs should explain the recognition signal, invariant, pointer movement, proof of correctness, complexity, edge cases, and implementation approach.
 
