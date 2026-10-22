@@ -4,7 +4,7 @@
 
 The two-pointer pattern uses two variables to represent positions in a linear data structure, such as an array, string, or linked list. The pointers let us compare or coordinate two positions while using a predictable property of the input to decide how they move.
 
-The main interview insight is this: if the input gives us enough structure to rule out many candidates at once, we can often replace a nested pairwise scan with a single coordinated pass. That commonly reduces time complexity from `O(n²)` to `O(n)`, although the improvement depends on the input and the pointer invariant.
+The main interview insight is this: if the input gives us enough structure to rule out many candidates at once, we can often replace a nested pairwise scan with a single coordinated pass. That commonly reduces time complexity from $O(n^2)$ to $O(n)$, although the improvement depends on the input and the pointer invariant.
 
 Two pointers are not a single algorithm. They are a way to express a search or transformation in which each pointer has a clear responsibility and every movement can be justified.
 
@@ -32,9 +32,21 @@ for i from 0 to n - 1:
         compare(nums[i], nums[j])
 ```
 
-This examines `O(n²)` pairs. If the data is sorted, symmetric, or otherwise predictable, one comparison can tell us that an entire group of pairs cannot work. We can then move a pointer past that group instead of checking every pair individually.
+This examines $O(n^2)$ pairs. If the data is sorted, symmetric, or otherwise predictable, one comparison can tell us that an entire group of pairs cannot work. We can then move a pointer past that group instead of checking every pair individually.
 
 The optimization is valid only when the pointer movement follows an invariant. For example, in an ascending array, moving a pointer to the right never decreases the value it references. That predictable change is what lets the algorithm discard candidates safely.
+
+## Common time-complexity patterns
+
+Two pointers do not have one fixed time complexity. Count the outer choices and the work done by the pointer scan. For the common sorted K-sum pattern with $k \ge 3$, sorting is followed by $k - 2$ fixed-value choices and a linear two-pointer scan:
+
+| Problem shape | Common time complexity | Why |
+| --- | --- | --- |
+| Two Sum on an already sorted array | $O(n)$ | One inward scan. If sorting is required first, include $O(n \log n)$ sorting time. |
+| 3Sum | $O(n^2)$ | One anchor loop ($O(n)$) times one two-pointer scan ($O(n)$). Sorting adds $O(n \log n)$, which is dominated. |
+| Generalized K-sum, fixed $k \ge 3$ | $O(n^{k-1})$ | Fix $k - 2$ values, then scan the remaining range with two pointers. Sorting is dominated by the search. |
+
+So when you recognize the standard 3Sum structure, expect $O(n^2)$. For the standard generalized K-sum structure with fixed $k \ge 3$, $O(n^{k-1})$ is the usual target. The $k = 2$ case is a linear scan when input is already sorted; if sorting is needed, include its $O(n \log n)$ cost. This is a pattern-based expectation, not a guarantee for every problem described as “two pointers”; state the nested choices and scan cost for the specific algorithm.
 
 ## Three common strategies
 
@@ -118,7 +130,7 @@ Use this sequence when explaining a two-pointer solution:
 3. **Explain movement.** For every branch, say why moving that pointer is safe and what candidates are eliminated.
 4. **State the stopping condition.** Usually the pointers meet, cross, or the scan reaches the end.
 5. **Prove that no valid answer is skipped.** Connect each discarded region to the invariant.
-6. **Analyze complexity.** Count total pointer movements rather than multiplying nested-looking sections automatically. If each pointer moves at most `n` times, the total is often `O(n)` time; state any sorting cost separately.
+6. **Analyze complexity.** Count total pointer movements rather than multiplying nested-looking sections automatically. If each pointer moves at most $n$ times, the total is often $O(n)$ time; state any sorting cost separately.
 7. **Test edge cases.** Consider empty input, one element, duplicate values, already-valid input, no solution, and pointer meeting or crossing.
 
 ## A quick pattern-selection guide
@@ -147,6 +159,7 @@ The analogy is limited: production garbage collectors have additional concerns s
 
 - [125. Valid Palindrome](./125-Valid-Palindrome.md) — skip non-alphanumeric characters while comparing matching positions from both ends.
 - [11. Container With Most Water](./11-container-with-most-water.md) — maximize area by moving the shorter boundary inward.
+- [15. 3Sum](./15-3sum.md) — sort the array, fix one value, then scan the remaining range with two pointers.
 - [167. Two Sum II — Input Array Is Sorted](./167-two-sum2-input-array-is-sorted.md) — use sorted order to move two pointers toward a target pair.
 
 Future problem walkthroughs should explain the recognition signal, invariant, pointer movement, proof of correctness, complexity, edge cases, and implementation approach.
