@@ -221,3 +221,7 @@ Both approaches are linear because each input character is examined only a const
 ## Interview answer template
 
 > I’ll use two pointers, one at each end of the string. Each pointer skips non-alphanumeric characters. I compare the remaining characters case-insensitively; if they differ, the string is not a palindrome. If they match, I move both pointers inward. Each pointer moves across the string at most once, so the time complexity is `O(n)` and the extra space is `O(1)`. In Go, I must compare bytes with character literals such as `'0'` and `'9'`; numeric `0` is not the character `'0'`.
+
+## Related
+
+- [Mock interview transcript](./transcript/125-Valid-Palindrome-interview.md) — full English interview dialogue with clarification, code, complexity, edge cases, and follow-ups.
