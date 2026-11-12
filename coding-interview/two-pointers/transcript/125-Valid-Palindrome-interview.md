@@ -14,18 +14,14 @@
 > Let's start simple. Given a string `s`, return `true` if it is a palindrome, considering only alphanumeric characters and ignoring case. Before you write anything — what questions do you have for me?
 
 🧑‍💻 **Interviewee:**
-> Sure, a few things I want to confirm.
+> Sure, a few things I want to confirm. Should I treat only ASCII letters and digits as alphanumeric, or include Unicode letters such as accented characters?
 >
-> First, by "alphanumeric" — do you mean ASCII letters and digits only, or should I also handle Unicode letters, like accented characters?
+> Is ASCII case-insensitive comparison enough, or should pairs like `é` and `É` match too?
 >
-> Second, on case: can I assume a simple ASCII lowercase conversion is enough, or do you expect full Unicode case folding?
->
-> Third, is the input guaranteed to be a valid string, or should I handle `null`?
->
-> And last — are we optimizing for extra space, or is an `O(n)` filtered copy acceptable?
+> Finally, should I avoid building a filtered copy, or is `O(n)` extra space acceptable?
 
 🧑‍💼 **Interviewer:**
-> Good questions. Assume ASCII letters and digits only, simple case-insensitive comparison. The input is a valid string — no `null`. And I do care about space, so try to avoid building a second string.
+> Assume ASCII letters and digits with ASCII case-insensitive comparison. Please avoid building a second string.
 
 🧑‍💻 **Interviewee:**
 > Got it. So the contract is: ignore everything that isn't `a–z`, `A–Z`, or `0–9`, compare case-insensitively, and do it without extra memory.
@@ -188,13 +184,9 @@ func toLower(b byte) byte {
 > Nice. Now suppose the input can contain Unicode letters — `"été"` should be valid. What breaks?
 
 🧑‍💻 **Interviewee:**
-> Two things break.
+> Two things change. First, Go string indexes return bytes, so indexing can split a UTF-8 character such as `é`. Second, my ASCII checks won’t recognize Unicode letters.
 >
-> First, indexing `s[i]` gives me a `byte`, not a character. In Go, `é` is two bytes in UTF-8, so I'd slice a multi-byte character in half. I need to iterate over `rune`s — either by converting to `[]rune` once, or by decoding with `utf8.DecodeRuneInString` from both ends.
->
-> Second, my hand-rolled ASCII checks are wrong. I'd use `unicode.IsLetter`, `unicode.IsDigit`, and `unicode.ToLower`.
->
-> Note the trade-off: converting to `[]rune` costs `O(n)` space, so I'd lose the constant-space property. If I decode runes in place from both ends, I can keep it `O(1)` extra space, at the cost of more fiddly pointer arithmetic.
+> I’d iterate over runes and use Go’s `unicode` package. Converting to `[]rune` uses `O(n)` extra space. Decoding runes from both ends can avoid that copy, but it makes the pointer logic more involved.
 
 🧑‍💼 **Interviewer:**
 > Last one. Same problem, but the input arrives as a stream and you can't store it. What changes?

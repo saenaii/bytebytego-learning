@@ -101,9 +101,9 @@ func twoSum(numbers []int, target int) []int {
 > Explain why moving one pointer doesn’t skip the answer.
 
 🧑‍💻 **Interviewee:**
-> I maintain the invariant that if a valid pair still exists, its indexes are inside the current inclusive range `[left, right]`.
+> I keep any possible answer inside `[left, right]`.
 >
-> If the current sum is too small, every pair using `numbers[left]` with an index up to `right` is also too small: those other values are no larger than `numbers[right]`. So the current left position cannot be part of a solution, and I can discard it. If the sum is too large, every pair using `numbers[right]` with an index at least `left` is also too large, because those values are no smaller than `numbers[left]`. So I can discard the right position. When the sum matches, I return the pair. Each move removes only a position that cannot belong to a valid pair in the remaining range.
+> If the sum is too small, `numbers[left]` cannot make a target pair with any value up to `numbers[right]`, so I move `left` right. If the sum is too large, `numbers[right]` cannot make a target pair with any value from `numbers[left]` onward, so I move `right` left. If the sum matches, I return the pair. Sorted order makes each discarded position safe to remove.
 
 🧑‍💼 **Interviewer:**
 > What are the complexity bounds?

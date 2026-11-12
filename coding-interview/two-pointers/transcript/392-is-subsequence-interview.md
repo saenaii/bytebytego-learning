@@ -145,13 +145,13 @@ func isSubsequence(s string, t string) bool {
 > Suppose we need to check many different strings `s` against the same large `t`. What could you do?
 
 🧑‍💻 **Interviewee:**
-> If there are many queries, rescanning all of `t` for each one may be expensive. I could preprocess `t` into a next-occurrence table: for each position and character, record the next index where that character appears. Then each character in a query can jump directly to its next occurrence. The preprocessing takes time and space proportional to `len(t)` times the alphabet size, and each query takes time proportional to its length. For a small fixed alphabet such as lowercase English letters, that can be a useful trade-off.
+> For many queries, I could preprocess `t` into a table that gives the next position of each character from every index. Each query can then jump to matches instead of rescanning `t`. This takes `O(len(t) × alphabet size)` preprocessing time and space, then `O(len(s))` time per query. It’s useful when the alphabet is small and many queries reuse the same `t`.
 
 🧑‍💼 **Interviewer:**
 > What changes if the strings can contain arbitrary Unicode characters?
 
 🧑‍💻 **Interviewee:**
-> In Go, indexing a string gives a byte, not a Unicode code point. If the specification means matching Unicode code points, I’d iterate over runes or convert the strings to rune slices. Converting to runes uses `O(len(s) + len(t))` extra space; a streaming rune iteration can avoid storing both converted slices, though it needs more careful iteration. I’d first clarify whether matching is defined by bytes, code points, or normalized text.
+> Go string indexes return bytes. If matching should use Unicode code points, I’d scan runes instead. Converting both strings to rune slices takes `O(len(s) + len(t))` extra space; decoding runes as I scan avoids those slices but adds pointer logic. I’d first clarify whether the comparison is byte-based, code-point-based, or requires normalized text.
 
 🧑‍💼 **Interviewer:**
 > Is this the same as finding a substring?

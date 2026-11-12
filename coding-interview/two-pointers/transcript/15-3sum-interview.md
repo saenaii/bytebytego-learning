@@ -188,7 +188,7 @@ func threeSum(nums []int) [][]int {
 > What if the input is extremely large and adding three integers could overflow?
 
 🧑‍💻 **Interviewee:**
-> I’d check the integer range guaranteed by the problem and the width of Go’s `int` on the target platform. If the sum could overflow, I’d convert the operands to a sufficiently wide integer type before adding them. Sorting and pointer movement would be unchanged, but the numeric type used for comparisons would need to safely represent the possible sum.
+> I’d check the input constraints against Go’s `int` range. If the sum could overflow, I’d convert the values to a wider type before adding them. The sorting and pointer logic would stay the same.
 
 ---
 

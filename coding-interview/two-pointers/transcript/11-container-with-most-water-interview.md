@@ -100,9 +100,9 @@ func maxArea(height []int) int {
 > Convince me that moving the shorter line won’t skip the optimal container.
 
 🧑‍💻 **Interviewee:**
-> Suppose the left line is shorter. Any container that keeps this same left line and uses a position to its left is impossible because the right pointer is already the current right boundary of the remaining interval. Any container that keeps the left line and uses a position between the pointers has a smaller width than the current pair. Its height is still limited by that same left line, so its area cannot exceed the current area, which I already recorded.
+> Suppose the left line is shorter. Any remaining pair that keeps this left line must use a right endpoint between `left` and `right`. It has less width, and its water height cannot exceed `height[left]`, so it cannot beat the area I just recorded.
 >
-> Therefore, no better container using the shorter left line remains inside the interval. I can discard it and search for a taller left line. The argument is symmetric when the right line is shorter. Each step either records the current area or rules out all remaining candidates that use the shorter boundary.
+> I can therefore discard `left` and search for a taller left line. If the right line is shorter, the same reasoning lets me discard `right`. Each move preserves every candidate that could improve the best area.
 
 🧑‍💼 **Interviewer:**
 > What are the time and space costs?
@@ -131,7 +131,7 @@ func maxArea(height []int) int {
 > | `[1, 1]` | `1` | The only possible pair |
 > | `[1, 2]` | `1` | Width and shorter height are both one |
 > | `[0, 0, 0]` | `0` | Every candidate has zero height |
-> | `[5, 1, 4]` | `8` | The best pair may not use the outermost right line after a move |
+> | `[1, 10, 1, 10, 1]` | `20` | Two interior lines can beat the short outer lines |
 > | `[]` or one line | `0` | The loop does not run |
 >
 > I’d also verify that the best area is retained when it occurs before the pointers meet.
