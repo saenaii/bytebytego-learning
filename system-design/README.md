@@ -9,6 +9,7 @@ Runnable system-design examples and study notes inspired by [ByteByteGo](https:/
 | [A Framework for System Design Interviews](./a-framework-for-system-design-interviews/) | A collaborative four-step process for clarifying requirements, aligning on architecture, deep diving, and wrapping up. |
 | [Back-of-the-Envelope Estimation](./back-of-the-envelope-estimation/) | Estimating QPS, storage, latency, availability, and capacity from explicit assumptions. |
 | [Scale From Zero to Millions of Users](./scale-from-zero-to-millions-of-users/) | The incremental path from a single server to a globally distributed, observable, sharded system. |
+| [Design a URL Shortener](./design-a-url-shortner/) | Requirements, capacity estimates, Base62 short codes, redirects, caching, and scaling a URL-shortening service. |
 | [Rate Limiter](./rate-limiter/) | Token bucket, leaking bucket, and adaptive BBR rate-limiting algorithms in Go. |
 | [Consistent Hashing](./consistent-hashing/) | Hash rings, virtual nodes, traffic distribution, and low-migration scale-out/scale-in. |
 | [Distributed Key-Value Store](./key-value-store/) | Consistent hashing, replication, quorum reads/writes, vector clocks, and Merkle-tree repair. |
@@ -43,6 +44,7 @@ The topics can be approached in this order:
 1. Start with [A Framework for System Design Interviews](./a-framework-for-system-design-interviews/) to learn the interview process.
 2. Study [Scale From Zero to Millions of Users](./scale-from-zero-to-millions-of-users/) for the overall architecture progression.
 3. Learn [Back-of-the-Envelope Estimation](./back-of-the-envelope-estimation/) to quantify scale and capacity before selecting components.
-4. Study [Rate Limiter](./rate-limiter/) for protecting services under load.
-5. Explore [Consistent Hashing](./consistent-hashing/) for scalable data and traffic placement.
-6. Finish with the [Distributed Key-Value Store](./key-value-store/) to see these ideas composed into a distributed system.
+4. Design a [URL Shortener](./design-a-url-shortner/) to practice API design, ID generation, caching, and read-heavy scaling.
+5. Study [Rate Limiter](./rate-limiter/) for protecting services under load.
+6. Explore [Consistent Hashing](./consistent-hashing/) for scalable data and traffic placement.
+7. Finish with the [Distributed Key-Value Store](./key-value-store/) to see these ideas composed into a distributed system.

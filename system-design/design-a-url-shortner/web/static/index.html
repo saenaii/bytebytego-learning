@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>URL Shortener Demo</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <p class="eyebrow">System Design Demo</p>
+      <h1>URL Shortener</h1>
+      <p class="lede">Create deterministic Base62 aliases, inspect mappings, and observe the Redis-backed redirect path.</p>
+      <p id="health" class="status">Checking dependencies…</p>
+    </header>
+
+    <section class="grid">
+      <article class="card">
+        <h2>Create a short URL</h2>
+        <form id="shorten-form">
+          <label for="url">Original URL</label>
+          <input id="url" name="url" type="url" required placeholder="https://example.com/article?utm_source=demo&id=42">
+          <label for="mode">Normalization mode</label>
+          <select id="mode" name="mode">
+            <option value="full">Full URL (sorted query)</option>
+            <option value="path_only">Path only (ignore query)</option>
+          </select>
+          <button type="submit">Shorten URL</button>
+        </form>
+        <pre id="shorten-result" class="result">Submit a URL to begin.</pre>
+      </article>
+
+      <article class="card">
+        <h2>Resolve a short code</h2>
+        <form id="resolve-form">
+          <label for="code">Short code</label>
+          <input id="code" name="code" required placeholder="abc123">
+          <button type="submit">Resolve URL</button>
+        </form>
+        <pre id="resolve-result" class="result">Enter a code to inspect its mapping.</pre>
+      </article>
+    </section>
+
+    <section class="card chart-card">
+      <div class="section-heading">
+        <div><p class="eyebrow">Live metrics</p><h2>Request activity</h2></div>
+        <button id="refresh" class="secondary" type="button">Refresh</button>
+      </div>
+      <canvas id="metrics-chart" height="120"></canvas>
+    </section>
+  </main>
+  <script src="/chart.umd.min.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

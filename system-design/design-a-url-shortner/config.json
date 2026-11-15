@@ -1,0 +1,14 @@
+{
+  "server": { "port": 8080 },
+  "postgres": {
+    "host": "postgres",
+    "port": 5432,
+    "database": "urlshortener",
+    "user": "urlshortener",
+    "password": "urlshortener"
+  },
+  "redis": { "address": "redis:6379", "password": "", "db": 0 },
+  "cache_ttl": "1h",
+  "default_mode": "full",
+  "query_blacklist": ["utm_campaign", "utm_medium", "utm_source"]
+}
