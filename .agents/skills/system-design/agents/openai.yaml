@@ -1,0 +1,4 @@
+interface:
+  display_name: "ByteByteGo System Design"
+  short_description: "Create ByteByteGo-inspired system design topic notes"
+  default_prompt: "Use $system-design to create a system design topic from a ByteByteGo course URL."

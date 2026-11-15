@@ -1,0 +1,4 @@
+interface:
+  display_name: "Implement Design"
+  short_description: "Turn a topic markdown into design.md and build the project"
+  default_prompt: "Use $implement-design to turn this topic markdown into design.md and implement the runnable project."
