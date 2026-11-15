@@ -20,6 +20,7 @@ The topic README comes first. Problem notes can then apply the pattern to a conc
 | Topic | What it covers |
 | --- | --- |
 | [Two Pointers](./two-pointers/) | Using two positions in a linear data structure to compare, scan, or transform values while exploiting predictable movement. |
+| [Sliding Window](./sliding-window/) | Maintaining a contiguous window that expands and shrinks to find the longest, shortest, or best subarray for a monotone condition. |
 
 ## Recommended study loop
 
