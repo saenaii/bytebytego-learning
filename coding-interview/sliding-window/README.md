@@ -387,7 +387,7 @@ Work through these in order. Each one adds exactly one new idea.
 | --- | --- | --- | --- |
 | 1 | [643. Maximum Average Subarray I](https://leetcode.com/problems/maximum-average-subarray-i/) | Fixed | Build the sum once, then slide |
 | 2 | [1456. Maximum Number of Vowels in a Substring of Given Length](https://leetcode.com/problems/maximum-number-of-vowels-in-a-substring-of-given-length/) | Fixed | Maintain a count instead of a sum |
-| 3 | [209. Minimum Size Subarray Sum](https://leetcode.com/problems/minimum-size-subarray-sum/) | Variable, shortest | Shrink while valid |
+| 3 | [209. Minimum Size Subarray Sum](./209-minimum-size-subarray-sum.md) ([LeetCode](https://leetcode.com/problems/minimum-size-subarray-sum/)) | Variable, shortest | Shrink while valid |
 | 4 | [3. Longest Substring Without Repeating Characters](https://leetcode.com/problems/longest-substring-without-repeating-characters/) | Variable, longest | Track the last index of each character |
 | 5 | [567. Permutation in String](https://leetcode.com/problems/permutation-in-string/) | Fixed | Compare two frequency maps |
 | 6 | [1004. Max Consecutive Ones III](https://leetcode.com/problems/max-consecutive-ones-iii/) | Variable, longest | The `if`-instead-of-`while` optimization |
