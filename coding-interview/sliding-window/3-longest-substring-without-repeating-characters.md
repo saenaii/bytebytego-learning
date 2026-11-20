@@ -60,23 +60,26 @@ The current version deletes map entries while moving `left`. Instead, store each
 
 ```go
 func lengthOfLongestSubstring(s string) int {
-	lastSeen := make(map[byte]int, len(s))
-	left, bestLen := 0, 0
+	lastSeen := make(map[byte]int, len(s)) // KEY: character -> most recent index
+	left, bestLen := 0, 0                 // KEY: active window start and longest length
 
 	for right := 0; right < len(s); right++ {
+		// KEY: only move left when the previous copy is inside the window.
 		if previous, ok := lastSeen[s[right]]; ok && previous >= left {
-			left = previous + 1
+			left = previous + 1 // KEY: exclude the earlier copy
 		}
-		lastSeen[s[right]] = right
+		lastSeen[s[right]] = right // KEY: save this occurrence for future duplicates
 
 		if length := right - left + 1; length > bestLen {
-			bestLen = length
+			bestLen = length // KEY: update only after the window is valid
 		}
 	}
 
 	return bestLen
 }
 ```
+
+The `KEY` comments mark the standard solution's essential state and updates: track previous indexes, keep `left` from moving backward, update the current character's index, and record the best valid window.
 
 This version has the same expected `O(n)` time and `O(min(n, alphabet size))` map space. Its improvement is mainly clarity and fewer map operations, not a better Big-O bound.
 
