@@ -393,7 +393,7 @@ Work through these in order. Each one adds exactly one new idea.
 | 6 | [1004. Max Consecutive Ones III](https://leetcode.com/problems/max-consecutive-ones-iii/) | Variable, longest | The `if`-instead-of-`while` optimization |
 | 7 | [424. Longest Repeating Character Replacement](https://leetcode.com/problems/longest-repeating-character-replacement/) | Variable, longest | A condition built from the maximum count |
 | 8 | [438. Find All Anagrams in a String](https://leetcode.com/problems/find-all-anagrams-in-a-string/) | Fixed | Record every valid window, not just the best |
-| 9 | [76. Minimum Window Substring](https://leetcode.com/problems/minimum-window-substring/) | Variable, shortest | Two maps and a "missing count" |
+| 9 | [76. Minimum Window Substring](./76-minimum-window-substring.md) ([LeetCode](https://leetcode.com/problems/minimum-window-substring/)) | Variable, shortest | Track how many required character counts are satisfied |
 | 10 | [992. Subarrays with K Different Integers](https://leetcode.com/problems/subarrays-with-k-different-integers/) | Variable, counting | `atMost(K) - atMost(K - 1)` |
 | 11 | [239. Sliding Window Maximum](https://leetcode.com/problems/sliding-window-maximum/) | Fixed | Not a window state — a monotonic deque |
 
