@@ -1,154 +1,192 @@
 # Rate Limiter — Staff Engineer Mock Interview
 
-> A practice transcript for explaining rate-limiter design at staff level. The candidate should make assumptions explicit, connect design choices to product requirements, and communicate trade-offs. The repository project is a lightweight, in-process Go demo; production-scale architecture discussed here is an extension, not a guarantee provided by that demo.
+> Use this as an English speaking practice script, not a speech to memorize. The candidate’s answers are intentionally concise and conversational; in a real interview, pause for the interviewer’s response and adapt. The local Go project in this repository is an in-process demo. The production choices below are design proposals, not features the demo already provides.
 
-## Interview Setup
+## A common interview rhythm
 
-**Interviewer:** We’re going to design a rate limiter for a public API. I’m interested in how you clarify requirements, make trade-offs, and lead the design—not just which algorithm you can name. Please think aloud and call out assumptions.
+There is no single required script for a system-design interview. A useful rhythm is:
 
-**Candidate:** Sounds good. I’ll first establish the traffic and policy requirements, then propose the request path and state model. I’ll compare algorithm choices and finish with distribution, failure handling, and operations. I’ll keep hard guarantees separate from best-effort behavior.
+1. Clarify the goal and constraints.
+2. State assumptions and choose a starting design.
+3. Sketch the request flow and explain the main components.
+4. Follow up on scale, consistency, failures, and trade-offs.
+5. Cover rollout and operations, then summarize.
 
-## 1. Problem Framing and Requirements
+Treat this as a map, not a checklist. If the interviewer redirects or gives new constraints, update the design out loud. A clear decision with stated assumptions is usually stronger than listing every possible option.
 
-**Interviewer:** What problem are we solving, and what would you clarify before designing it?
+## The interview
 
-**Candidate:** We need to control how frequently a client can consume a protected resource. That can protect service capacity, reduce abuse, and allocate capacity fairly across customers. I’d clarify:
+### Opening: frame the problem
 
-- What is the identity key: API key, account, user, IP, route, or a combination?
-- Are limits per second, minute, or another window? Do clients need short bursts?
-- Is the goal strict enforcement, approximate enforcement, or overload protection?
-- What are peak request rate, number of active identities, latency budget, and availability target?
-- Do policies vary by plan, endpoint, or region, and how quickly must policy changes take effect?
-- Should a rejected request receive a retry hint, and are there contractual fairness requirements?
+**Interviewer:** Let’s design a rate limiter for a public API. I’m interested in your reasoning, not just the algorithm. Where would you start?
 
-Until we have numbers, I’ll assume a multi-tenant API with per-account limits, high request volume, low added latency, and a tolerance for small cross-region discrepancies. I’d confirm that last assumption because it determines whether we can use regional counters or need stronger coordination.
+**Candidate:** Sure. Before I pick an algorithm, I’d like to pin down what we’re limiting and how strict the limit needs to be. Is the main goal to protect the service from overload, enforce customer quotas, or both?
 
-**Interviewer:** What are the core functional and non-functional requirements?
+**Interviewer:** Both. What else would you clarify?
 
-**Candidate:** Functionally, the service needs to decide whether to admit a request under the applicable policy and return a useful rejection response. Operationally, it needs policy updates, health signals, and metrics for allowed and rejected traffic. Non-functionally, it should have bounded decision latency, scale with traffic and active keys, avoid becoming a single point of failure, and define behavior when its state store or policy service is unavailable. We should also avoid allowing callers to spoof the identity used for enforcement.
+**Candidate:** I’d ask who the limit applies to—an account, API key, user, IP address, or some combination. I’d also want peak requests per second, active customer count, burst tolerance, the latency budget, and whether the limit must be global across regions. Those answers change the design quite a bit.
 
-## 2. API and Request Flow
+For now, I’ll assume this is a multi-tenant API. We need per-account limits, low added latency, and a small amount of cross-region overshoot is acceptable for ordinary traffic. For expensive operations, we can use a stricter policy. Does that sound like a reasonable starting point?
 
-**Interviewer:** Sketch the API and the request flow.
+**Interviewer:** Yes. Assume about 500,000 decisions per second at peak, with a p99 budget of 5 milliseconds for the limiter.
 
-**Candidate:** I’d usually put the decision in gateway middleware rather than require an application-level round trip. The logical decision API could be:
+**Candidate:** I’d first confirm whether that 5-millisecond p99 covers the limiter path end to end. If it does, I’d treat same-AZ Redis as a plausible starting point, not a guarantee. As a rough budget, we might reserve about 0.5 ms for network round trips, 1 ms for gateway work, 0.5 ms for Redis plus the script, and 0.1 ms for serialization. That leaves roughly 2.9 ms for queueing, variance, and headroom. Those are planning numbers; we’d measure them in our environment.
+
+A synchronous cross-region check would make that budget risky and leave little room for tail latency. If 5 ms is a hard target across regions, I’d keep decisions regional and use bounded token leases from a coordinator. That trades exact global enforcement for lower request latency and a measurable overshoot bound.
+
+### Build or buy: establish the boundary
+
+**Interviewer:** Would you build this, or use something that already exists?
+
+**Candidate:** My default would be to check the gateway and managed API products we already operate. If they support our identity model, weighted limits, policy updates, observability, and the consistency we need, I’d prefer using them. That reduces the amount of infrastructure we own.
+
+I’d build a separate limiter only if we have a real gap—for example, custom per-customer policies across several gateways, a latency or cost target the existing product can’t meet, or enforcement behavior we need to control. I’d compare the operational cost too: on-call ownership, upgrades, capacity planning, and incident response. Do we already have a gateway product in place?
+
+**Interviewer:** Assume we have a gateway, but its built-in limits are local to each gateway instance. We need a shared account quota.
+
+**Candidate:** Then I’d first check whether the gateway can call a shared decision service or receive centrally allocated token leases. If it can’t, that’s a concrete reason to add a shared component. I’d keep the policy and decision interfaces portable so we can revisit the buy-versus-build choice later.
+
+### Draw the first design
+
+**Interviewer:** Sketch your initial design.
+
+**Candidate:** Let me draw the request path first. I’ll keep the first version simple and call out where coordination happens.
 
 ```text
-checkLimit(identity, policy, cost) -> allowed, remaining, retryAfter
+Client
+  │
+  ▼
+API Gateway ── authenticate and derive trusted account ID
+  │
+  ├── resolve cached, versioned policy
+  │
+  ▼
+Rate-limit decision
+  ├── MVP: atomic token-bucket check in shared Redis (Lua)
+  └── later option: gateway-local tokens leased by a coordinator
+  │
+  ├── allowed ──► backend
+  └── denied  ──► HTTP 429 + retry guidance
+
+Policy service ──► versioned policy updates ──► gateways
+Metrics and logs ◄──── gateway and decision service
 ```
 
-At the edge, trusted authentication produces the identity. The middleware resolves the policy, computes the cost (one request by default, possibly weighted for expensive operations), and asks the limiter for an atomic decision. If allowed, it forwards the request; otherwise it returns HTTP 429 with a retry hint where we can estimate one. The exact response contract should be consistent across endpoints.
+The gateway should derive the account ID from trusted authentication, not from an arbitrary header. It resolves the policy, asks for an atomic decision, and either forwards the request or returns a 429. I’d include a request cost, defaulting to one, so an expensive endpoint can consume more quota than a cheap read.
 
-I’d avoid trusting an arbitrary client-supplied user ID or forwarding header. For unauthenticated traffic, an IP-based key may be a fallback, but NATs and proxies make it an imperfect fairness boundary.
+**Interviewer:** Why Redis and Lua? Isn’t that just another dependency on every request?
 
-**Interviewer:** Would you call a centralized service on every request?
+**Candidate:** It is, and that’s the main trade-off. For an MVP, I’d choose a Redis-backed atomic token bucket because it gives us shared per-account state and a compact implementation. A Lua script can refill, check, and decrement in one atomic operation. I’d set a strict timeout and measure the full gateway-to-Redis path against the 5 millisecond p99 target.
 
-**Candidate:** It’s simple to reason about, but a synchronous central call adds network latency and creates a dependency on that service for every API request. I’d compare three models:
+I wouldn’t assume Redis will meet the target at 500,000 decisions per second. We’d benchmark with realistic key skew and failover settings. If the network hop or datastore cost misses our target, I’d move the common path to gateway-local tokens allocated in bounded batches. That lowers per-request coordination, but it introduces some overshoot and can leave tokens stranded on lightly used gateways.
 
-1. **Central atomic decision:** strongest shared enforcement, but adds a network hop and can bottleneck.
-2. **Regional or sharded counters:** lower latency and better locality, with bounded inconsistency or more complex routing.
-3. **Leased token allocation to gateways:** gateways make local decisions cheaply, while a coordinator grants token batches. This reduces per-request coordination but can temporarily skew usage and strand unused tokens.
+**Interviewer:** What would the decision API look like?
 
-The choice follows the consistency requirement. For overload protection, approximate regional enforcement is often adequate. For contractual quotas or costly operations, I’d use tighter coordination or reserve capacity centrally for the high-risk actions.
+**Candidate:** Logically, something like `check(account, policy, cost)` returning `allowed`, `remaining`, and an optional `retryAfter`. The gateway owns the HTTP response. I’d keep the response consistent across routes, and I’d only return a retry estimate when the algorithm can support one accurately enough.
 
-## 3. Algorithm Selection
+### Pick an algorithm
 
-**Interviewer:** Which rate-limiting algorithm would you choose?
+**Interviewer:** Why a token bucket? What are the alternatives?
 
-**Candidate:** There isn’t one universally best algorithm; it depends on burst tolerance, smoothness, state cost, and fairness.
+**Candidate:** Token bucket is my starting point because it gives us two understandable controls: a sustained refill rate and a maximum burst. It fits an API where brief bursts are okay but sustained usage should stay bounded.
 
-- A **token bucket** accumulates tokens up to a capacity and spends one or more tokens per request. It’s a strong default when short bursts are acceptable but average consumption should remain bounded. Capacity sets the burst allowance; refill rate sets the sustained rate.
-- A **leaking bucket** can buffer accepted work and drain it at a steady rate, which smooths downstream output. The queue adds latency and requires a clear overflow policy. If the API is synchronous, we need to distinguish queueing work from merely permitting a request.
-- A **fixed window** is easy and cheap, but clients can send nearly twice the nominal limit around a boundary. A **sliding window counter or log** reduces that boundary effect at additional state and computation cost.
-- **Adaptive congestion control** can respond to changing capacity, but it is harder to explain and tune as a customer quota mechanism. The repository’s BBR-inspired implementation is an educational adaptive limiter; it should not be treated as a production BBR implementation or a substitute for explicit tenant policy without validating its behavior.
+A leaking bucket is useful when we need to smooth work into a downstream system, but queueing adds latency and may not fit a synchronous API. A fixed window is cheaper, but traffic can bunch up around a window boundary. Sliding windows reduce that boundary problem, at some extra state or computation cost. I’d use a concurrency limit as well if the real constraint is in-flight work rather than requests per second.
 
-I’d start with token bucket for a general API limit, then validate burst and fairness requirements with traffic data. I’d use separate overload protection or concurrency limits when the protected resource is sensitive to in-flight work, because request rate alone does not bound concurrency or request cost.
+The repo also has a BBR-inspired adaptive option. I’d describe that as an educational adaptive limiter, not a production BBR implementation or a replacement for explicit customer quotas.
 
-**Interviewer:** How would you tune a token bucket?
+**Interviewer:** How would you set the bucket values?
 
-**Candidate:** I’d define the sustained rate from the service budget and tenant entitlement, then choose capacity from the burst we can safely absorb. For example, if a tenant is entitled to 100 requests per second, a capacity of 100 permits a one-second burst, but only if downstream capacity can absorb that spike. I’d model the refill continuously or in appropriately granular increments, use a monotonic clock, clamp tokens at capacity, and make the check-and-decrement atomic. For weighted requests, consume the request’s cost and reject if fewer tokens remain.
+**Candidate:** I’d set the refill rate from the customer entitlement and our service budget. Then I’d set capacity from the burst we can safely absorb. For example, a rate of 100 requests per second with a capacity of 100 allows about a one-second burst—but I’d only choose that capacity if the backend can handle it. For costly requests, I’d charge more than one token.
 
-**Interviewer:** What does the repository implement, and what should we not infer from it?
+**Interviewer:** What if one account sends a huge amount of traffic?
 
-**Candidate:** The repository is a local Go service exposing `/allow`, `/health`, and `/stats`, with configurable Token Bucket, Leaking Bucket, and BBR-inspired options. The implementations are in-process and use synchronization for concurrent access. That is useful for learning and testing algorithm behavior. It does not provide shared state across replicas, distributed fairness, global quotas, or production-grade adaptive control. Running multiple instances would give each instance its own limiter state unless we add coordination or deliberately divide the budget.
+**Candidate:** We need to protect both that tenant’s quota and the shared service. I’d have per-account limits plus a separate service-wide overload guard. There’s a specific issue with a shared Redis Cluster counter: one key maps to one hash slot, and that slot is served by one shard. So a very large tenant can saturate that shard even if the rest of the cluster is mostly idle. A Lua script keeps the check atomic, but it runs on that node’s command execution path and blocks other commands there while it runs; keeping the script short matters.
 
-## 4. State, Distribution, and Capacity
+A dedicated shard can isolate that tenant from others, but it doesn’t split the hot key itself. To spread the work, we could divide the tenant’s budget across sub-keys or lease token batches to gateways. Both approaches need a coordinator or allocation rule to keep the total bounded, and both can allow some overshoot or strand unused budget. I’d choose between them based on the tenant’s traffic and the quota’s accuracy requirement.
 
-**Interviewer:** How would you scale this to multiple gateway instances?
+### Scale, consistency, and failure behavior
 
-**Candidate:** First I’d decide whether limits are global or regional and quantify acceptable error. If each gateway independently enforces the full quota, aggregate traffic can exceed the limit roughly in proportion to the number of gateways. A shared atomic counter avoids that over-admission but adds a hot-path dependency.
+**Interviewer:** At 500,000 decisions per second, how would you think about capacity and cost?
 
-A common compromise is partitioning by identity so one shard owns the decision state for a key, or leasing token batches to gateways. With leases, the coordinator grants a bounded number of tokens and the gateway enforces locally. That gives an explicit upper bound on overshoot from outstanding leases, but it can waste capacity when gateways are unevenly loaded. I’d monitor lease utilization and rebalance based on observed demand.
+**Candidate:** I’d estimate state and request volume, but I wouldn’t size the cluster from the request rate alone. We need active account count, state size and expiry, key skew, replication overhead, and the cost of failover headroom. I’d benchmark Redis operations per shard with the actual script and traffic distribution.
 
-For a distributed counter, I’d store enough state to compute refill or window expiration and perform the read-update decision atomically. I’d shard by a stable hash of the identity, size shards using active-key cardinality and request skew, and plan for hot tenants. A single large customer can dominate one key, so we may need sub-partitioned local budgets or dedicated treatment while preserving that tenant’s total limit.
+For cost, I’d compare at least two models: shared decisions on every request, and local decisions using leased token batches. The first spends more on network and datastore operations; the second trades some unused lease capacity and bounded overshoot for fewer calls. We can model the monthly decision count, datastore and network capacity, replication, and operational ownership. I’d use provider pricing and benchmark results for actual dollar estimates rather than invent a number here.
 
-**Interviewer:** How would you estimate capacity?
+**Interviewer:** How accurate does the quota need to be across regions?
 
-**Candidate:** I’d ask for peak decisions per second, active identities, state bytes per identity, and retention period. As a rough example, 2 million active identities at 100 bytes each is about 200 MB raw state before datastore overhead, replication, and indexes. At 500,000 decisions per second, one centralized decision path is unlikely to be a single small service; I’d benchmark the chosen store and network path, then shard and replicate based on measured throughput and latency. I’d include skew and failover headroom rather than divide evenly by average load. These are starting estimates, not a capacity commitment.
+**Candidate:** For ordinary protection, I’d start with regional enforcement or token leases and document the maximum expected overshoot. If this is a contractual hard quota, I’d use stronger coordination for that policy, even if it adds latency. I’d avoid claiming a globally exact limit while each region is making independent decisions.
 
-## 5. Consistency and Failure Modes
+**Interviewer:** What happens if Redis is unavailable?
 
-**Interviewer:** What happens if the state store is unavailable?
+**Candidate:** I’d make the behavior explicit by endpoint and risk. For low-risk reads, we might fail open with a small local emergency bucket to protect the backend. For expensive or abuse-sensitive operations, we might fail closed. Either way, we need bounded timeouts, no retry storm, and an alert when fallback starts. The right choice depends on the cost of admitting excess traffic versus rejecting legitimate users.
 
-**Candidate:** That’s a product and risk decision. **Fail open** preserves API availability but may allow abuse or overload. **Fail closed** protects the service but can block legitimate traffic. I’d use different behavior by endpoint and risk tier: perhaps fail open with a conservative local emergency limit for low-risk reads, and fail closed for expensive or security-sensitive operations. The decision should be explicit in policy, and we need an alert when the fallback activates.
+If we later use leases, a gateway can keep spending its remaining lease during a coordinator outage, but it must stop when the lease expires. That preserves a known bound; it doesn’t provide unlimited availability.
 
-If we use local fallback buckets, I’d cap their capacity so every gateway cannot independently grant the full global quota without bound. We should also ensure retries do not amplify load during a store outage. Timeouts, bounded retries, circuit breaking, and load shedding matter as much as the data structure.
+**Interviewer:** And policy changes?
 
-**Interviewer:** What about clock skew and duplicate requests?
+**Candidate:** I’d version policies and define a propagation target. Gateways can cache them, but we should be clear that stricter limits may not take effect everywhere instantly. I’d start with shadow evaluation, then canary a small group, watch rejection rates and backend health, and keep rollback simple.
 
-**Candidate:** Use monotonic time for elapsed intervals within a process. For distributed windows, prefer datastore time or a well-defined time source and tolerate small skew in the policy. The limiter decision itself should be atomic, so concurrent requests for one identity cannot both spend the same token. If the client retries after an ambiguous timeout, it may consume quota twice. If that is unacceptable, add an idempotency key or make the operation naturally idempotent; that introduces storage and retention costs, so I wouldn’t add it to every ordinary rate-limit check by default.
+### Test the design
 
-**Interviewer:** How do you handle policy changes?
+**Interviewer:** How would you test it before launch?
 
-**Candidate:** Version policies and distribute updates with a defined propagation target. Gateways can cache policies with a bounded TTL and refresh asynchronously. For a stricter limit, we need to decide whether enforcement starts immediately or after propagation; promising instantaneous global changes while using cached regional state would be misleading. Roll out new policies gradually where possible, validate their effect, and keep a rollback path.
+**Candidate:** I’d cover three layers. First, unit tests for the algorithm boundaries: empty and full buckets, refill, weighted cost, and concurrent requests. Second, load tests with realistic account distributions, including a hot tenant and burst traffic, ramping toward 500,000 decisions per second while measuring p99 latency and rejection accuracy. Third, failure tests: Redis failover, network partition, clock skew, and delayed policy updates.
 
-## 6. Fairness, Security, and Client Experience
+For each failure, I’d verify the promised behavior, not just that the process stays up. For example: do we fail open or closed as intended, how much can a leased quota overshoot, and how quickly do new policies take effect? I’d run those tests with production-like topology before we call the latency or availability target met.
 
-**Interviewer:** How do you prevent a noisy neighbor from harming others?
+### MVP and operating the system
 
-**Candidate:** Use per-tenant keys and avoid a single global bucket as the only control. Add service-wide protection as a separate layer, then allocate tenant budgets within that envelope. Policy tiers should be explicit, and we should consider weighted costs for endpoints with very different resource consumption. We should also guard against high-cardinality key attacks: validate identity sources, cap state creation, expire inactive keys, and avoid using raw untrusted strings as unbounded storage keys.
+**Interviewer:** What would you ship first, and what would you defer?
 
-**Interviewer:** What should clients see when throttled?
+**Candidate:** For v1, I’d support authenticated per-account token buckets, a shared atomic decision path, a small set of policy fields, consistent 429 responses, and basic metrics. I’d keep the initial deployment in one region if the product allows it.
 
-**Candidate:** A stable 429 response with a machine-readable error and, when meaningful, a retry delay. We should avoid giving false precision if distributed state makes the estimate approximate. Documentation should tell clients to use exponential backoff with jitter and not retry immediately in a tight loop. We can expose remaining quota when doing so is useful and safe, but headers should be consistent and treated as guidance if the enforcement is approximate.
+I’d defer adaptive BBR-style control, a general-purpose policy language, cross-region exact quotas, and tenant-specific custom dashboards. Those add tuning or operational complexity before we’ve learned the real traffic shape. I’d revisit them when product requirements or measurements show the simple version is insufficient.
 
-## 7. Observability and Operations
+**Interviewer:** Who owns policies and what happens when a customer says they were throttled incorrectly?
+
+**Candidate:** I’d make ownership part of the design. Product or account operations should own the customer-facing entitlement, while the platform team owns enforcement and safe defaults. Policy changes should be audited and reversible. Support needs a way to inspect a customer’s effective policy and recent aggregate decisions without exposing sensitive data or adding unbounded metric labels.
+
+For an appeal, we should be able to trace which policy version was applied and why a request was rejected. We should also define a response target for investigating false throttling. If quotas are part of a customer SLA, the contract should say whether enforcement is exact, regional, or approximate and how incidents are handled.
 
 **Interviewer:** What would you monitor?
 
-**Candidate:** I’d monitor both system health and policy outcomes:
+**Candidate:** I’d watch decision latency and errors, allow and reject rates, Redis saturation, active keys, hot-key skew, policy propagation delay, fallback activations, and downstream saturation. I’d keep tenant IDs out of high-cardinality metrics; for investigations, I’d use access-controlled logs or sampled diagnostics. The goal is to tell whether we’re protecting the backend without unexpectedly blocking healthy customers.
 
-- Decision rate, allow/reject rate, and rejection ratio by route and policy tier.
-- Added latency distributions, timeout rate, datastore latency, and error rate.
-- Active key count, state memory, shard utilization, hot-key concentration, and eviction rate.
-- Fallback activations, policy propagation delay, lease utilization, and estimated overshoot.
-- Downstream saturation and request cost, so we can tell whether the limiter is protecting the resource it was designed to protect.
+### Close with a decision
 
-I’d avoid tenant IDs as unbounded metric labels. Use sampled or access-controlled diagnostics for per-tenant investigation, while aggregate metrics remain cardinality-bounded. Alerts should distinguish a sudden traffic spike from a limiter dependency failure or an accidental policy rollout.
+**Interviewer:** Give me the short version of your design.
 
-**Interviewer:** How would you test the design before rollout?
+**Candidate:** Given what we know, I’d first reuse the gateway for authentication, routing, and policy caching. For v1, I’d use a shared Redis-backed atomic token bucket for per-account quotas, with a strict latency budget and a benchmark gate before launch. I’d start in one region, shadow the decisions, then canary enforcement.
 
-**Candidate:** Unit-test algorithm invariants and boundary cases: full and empty buckets, refill, exact capacity, weighted cost, concurrent decisions, and clock behavior. Integration tests should exercise the HTTP response contract and configuration. Then load-test realistic key distributions, including skew and bursts, and inject state-store latency, timeouts, failover, and policy-update delays. I’d compare observed overshoot and decision latency to explicit targets. For rollout, shadow decisions first, then canary enforcement for a small tenant cohort, watch rejection and service health, and expand gradually with a fast rollback.
+If the shared call misses the p99 target or becomes too expensive, I’d move high-volume policies to bounded token leases at the gateways and accept a measured amount of overshoot. I’d keep a separate service-wide overload control, define fail-open or fail-closed behavior by risk, and make policy ownership and customer appeals operationally clear. The existing repo demo helps explain the algorithms and local API; it doesn’t implement this distributed production design.
 
-The repository includes unit and end-to-end tests for its local service; those validate that demo’s behavior. They do not by themselves prove distributed correctness, production capacity, or resilience under a shared-store outage.
+## What the interviewer is listening for
 
-## 8. Staff-Level Trade-Offs and Closing
+A strong staff-level answer should make the interviewer feel that the candidate can lead a decision, not just list components. Look for whether the candidate:
 
-**Interviewer:** What is the most important trade-off in your design?
+- Clarifies the quota identity, burst behavior, latency target, and required accuracy.
+- Checks whether an existing gateway or managed product already solves the problem.
+- Chooses a default design under stated assumptions, then names what evidence would change it.
+- Uses a diagram to make the request path and coordination points easy to follow.
+- Separates a useful v1 from features that can wait.
+- Connects cost, reliability, policy ownership, and customer impact to the technical design.
+- Distinguishes facts in the repository demo from assumptions about a production system.
 
-**Candidate:** It’s the balance between enforcement accuracy and request-path latency and availability. A globally coordinated counter can enforce a shared quota more precisely, but every request inherits the coordination service’s latency and failure modes. Local token leases reduce latency and dependency pressure but permit bounded overshoot and can waste budget. I’d choose based on the business cost of overshoot versus the cost of rejecting or slowing legitimate traffic, and make that contract visible to API owners.
+## Speaking practice: avoid sounding scripted
 
-**Interviewer:** Summarize your proposed design in a minute.
+Don’t memorize the candidate’s paragraphs. Practice the moves instead:
 
-**Candidate:** I’d start with an edge middleware that authenticates the caller, derives a trusted tenant key, resolves a versioned policy, and makes an atomic token-bucket decision. For the common case, I’d use regional or leased local budgets to keep the request path fast, with a centrally managed allocation that bounds overshoot. I’d add separate concurrency and service-wide overload controls where request rate is not enough. We’d define fail-open or fail-closed behavior per risk tier, return consistent 429 responses, and monitor decision latency, rejection rates, fallback use, skew, and downstream saturation. I would validate the numbers and traffic shape through shadowing and load tests before enforcing broadly. The repository’s in-process Go implementation is a useful local demonstration of algorithms and API behavior, but distributed state, policy propagation, and production resilience require additional design and validation.
+- Start with a short answer: “My default would be X, assuming Y.”
+- Explain one or two reasons, then name the trade-off.
+- Invite correction: “Does that match the requirement you had in mind?”
+- When new information arrives, update the design: “Given that constraint, I’d change X to Y.”
+- Use the diagram as a guide; don’t narrate every box mechanically.
 
-## Interviewer Evaluation Guide
+Useful phrases:
 
-A strong staff-level performance should:
-
-- Clarify identity, scope, traffic, burst, latency, availability, and consistency before selecting an algorithm.
-- Explain why token bucket is a reasonable default while naming when a queueing bucket, window-based limiter, concurrency limit, or adaptive control is more appropriate.
-- Distinguish per-process state from globally coordinated state and quantify the implications of replication, sharding, leases, and hot keys.
-- Make failure behavior and the cost of fail-open versus fail-closed explicit.
-- Address security, fairness, policy rollout, observability, testing, and staged rollout.
-- Communicate assumptions and trade-offs plainly, and avoid claiming guarantees that the design has not established.
+- “Let me check the requirement before I choose an algorithm.”
+- “I’ll make an assumption for now, and you can correct me.”
+- “My starting point would be …”
+- “The trade-off is …”
+- “I’d validate that with … before calling it a guarantee.”
+- “Given that new constraint, I’d change …”
